@@ -11,10 +11,11 @@
 /out/
 .vercel
 
-# cloudflare
-.vercel
+# cloudflare (OpenNext adapter)
 .wrangler/
-.next-on-pages/
+.open-next/
+cloudflare-env.d.ts
+.dev.vars
 
 # production
 /build

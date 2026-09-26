@@ -10,7 +10,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 async function getBusiness(slug: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase
     .from("businesses")
     .select("*")
@@ -22,22 +22,36 @@ async function getBusiness(slug: string) {
 export async function generateMetadata({
   params,
 }: {
-  params: { businessSlug: string };
+  params: Promise<{ businessSlug: string }>;
 }): Promise<Metadata> {
-  const business = await getBusiness(params.businessSlug);
-  if (!business) return { title: "Nicht gefunden" };
+  const { businessSlug } = await params;
+  const business = await getBusiness(businessSlug);
+  if (!business) return { title: "Nicht gefunden", robots: { index: false } };
+
+  const title = `Anfrage an ${business.business_name}`;
+  const description =
+    business.description ?? `Stelle ${business.business_name} unverbindlich eine Anfrage.`;
+
   return {
-    title: `Anfrage an ${business.business_name}`,
-    description: business.description ?? undefined,
+    title,
+    description,
+    alternates: { canonical: `/${business.slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `/${business.slug}`,
+      type: "website",
+    },
   };
 }
 
 export default async function BusinessLeadPage({
   params,
 }: {
-  params: { businessSlug: string };
+  params: Promise<{ businessSlug: string }>;
 }) {
-  const business = await getBusiness(params.businessSlug);
+  const { businessSlug } = await params;
+  const business = await getBusiness(businessSlug);
   if (!business) notFound();
 
   const industry = getIndustry(business.industry);

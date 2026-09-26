@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import Image from "next/image";
 import { Label, Input, Textarea, Select, FieldHint } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +20,7 @@ function SubmitButton() {
 
 export function ProfileForm({ business }: { business: BusinessRow }) {
   const initialState: BusinessActionState = null;
-  const [state, formAction] = useFormState(updateBusinessProfile, initialState);
+  const [state, formAction] = useActionState(updateBusinessProfile, initialState);
 
   return (
     <form action={formAction} className="card-surface space-y-5 p-6 sm:p-8">

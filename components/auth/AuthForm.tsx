@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import type { AuthActionState } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/Button";
 
@@ -24,7 +25,7 @@ export function AuthForm({
   children: React.ReactNode;
   hiddenFields?: Record<string, string>;
 }) {
-  const [state, formAction] = useFormState(action, null);
+  const [state, formAction] = useActionState(action, null);
 
   return (
     <form action={formAction} className="space-y-4">

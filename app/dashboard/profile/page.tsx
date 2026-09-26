@@ -1,10 +1,11 @@
 import { Copy } from "lucide-react";
-import { getCurrentBusiness } from "@/lib/data/business";
+import { getCurrentBusiness, getCurrentUser } from "@/lib/data/business";
 import { ProfileForm } from "@/components/dashboard/ProfileForm";
+import { DangerZone } from "@/components/dashboard/DangerZone";
 
 export default async function ProfilePage() {
-  const business = await getCurrentBusiness();
-  if (!business) return null;
+  const [business, user] = await Promise.all([getCurrentBusiness(), getCurrentUser()]);
+  if (!business || !user) return null;
 
   const publicUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/${business.slug}`;
 
@@ -37,6 +38,12 @@ export default async function ProfilePage() {
 
       <ProfileForm business={business} />
       <p className="text-xs text-ink-400">Öffentlicher Link: {publicUrl}</p>
+
+      <DangerZone
+        businessId={business.id}
+        businessName={business.business_name}
+        accountEmail={user.email ?? ""}
+      />
     </div>
   );
 }

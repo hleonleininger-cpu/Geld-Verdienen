@@ -13,22 +13,24 @@ export function generateStaticParams() {
   return SHOP_PRODUCTS.map((product) => ({ slug: product.slug }));
 }
 
-export function generateMetadata({
+export async function generateMetadata({
   params,
 }: {
-  params: { slug: string };
-}): Metadata {
-  const product = getShopProduct(params.slug);
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const product = getShopProduct(slug);
   if (!product) return { title: "Nicht gefunden" };
   return { title: product.name, description: product.tagline };
 }
 
-export default function ShopProductPage({
+export default async function ShopProductPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
-  const product = getShopProduct(params.slug);
+  const { slug } = await params;
+  const product = getShopProduct(slug);
   if (!product) notFound();
   const industry = getIndustry(product.industry);
 

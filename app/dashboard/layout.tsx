@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { getCurrentBusiness } from "@/lib/data/business";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { MobileTabBar } from "@/components/dashboard/MobileTabBar";
 import { MobileTopBar } from "@/components/dashboard/MobileTopBar";
 import { CreateBusinessForm } from "@/components/dashboard/CreateBusinessForm";
+
+// Gilt fuer den gesamten /dashboard/*-Baum: private Kundendaten duerfen
+// nicht in Suchmaschinen landen.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function DashboardLayout({
   children,

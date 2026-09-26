@@ -34,8 +34,12 @@ export function MarketingFooter() {
           </ul>
         </div>
       </div>
-      <div className="container-app border-t border-ink-100 py-6 text-xs text-ink-400">
-        © {new Date().getFullYear()} AnfragePilot · Ein MVP-Projekt
+      <div className="container-app flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 py-6 text-xs text-ink-400">
+        <span>© {new Date().getFullYear()} AnfragePilot · Ein MVP-Projekt</span>
+        <div className="flex gap-4">
+          <Link href="/datenschutz" className="hover:text-ink-700">Datenschutz</Link>
+          <Link href="/agb" className="hover:text-ink-700">AGB</Link>
+        </div>
       </div>
     </footer>
   );

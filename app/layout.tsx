@@ -15,17 +15,33 @@ const sora = Sora({
   weight: ["500", "600", "700"],
 });
 
-// Alle Routen laufen im Edge-Runtime, damit die App unveraendert auf
-// Cloudflare Pages (via @cloudflare/next-on-pages) deploybar bleibt.
-export const runtime = "edge";
+// Kein `export const runtime = "edge"` mehr: @opennextjs/cloudflare uebersetzt
+// den regulaeren Node-kompatiblen Next.js-Build in einen Cloudflare Worker;
+// die Edge-Runtime wird von diesem Adapter (Stand dieser Migration) nicht
+// unterstuetzt. Siehe docs/DEPLOYMENT_ARCHITECTURE.md.
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const description =
+  "AnfragePilot sammelt Kundenanfragen für lokale Dienstleister, macht sie übersichtlich und hilft dir, schneller zu antworten.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: "AnfragePilot – Nie wieder eine Kundenanfrage verlieren",
     template: "%s · AnfragePilot",
   },
-  description:
-    "AnfragePilot sammelt Kundenanfragen für lokale Dienstleister, macht sie übersichtlich und hilft dir, schneller zu antworten.",
+  description,
+  openGraph: {
+    type: "website",
+    locale: "de_DE",
+    siteName: "AnfragePilot",
+    title: "AnfragePilot – Nie wieder eine Kundenanfrage verlieren",
+    description,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

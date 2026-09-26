@@ -11,7 +11,7 @@ const links = [
 ];
 
 export async function MarketingNavbar() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   const isLoggedIn = Boolean(data.user);
 

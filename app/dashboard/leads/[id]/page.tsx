@@ -21,12 +21,11 @@ import { QuoteList } from "@/components/dashboard/leads/QuoteList";
 export default async function LeadDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const business = await getCurrentBusiness();
+  const { id } = await params;
+  const [business, lead] = await Promise.all([getCurrentBusiness(), getLeadById(id)]);
   if (!business) return null;
-
-  const lead = await getLeadById(params.id);
   if (!lead || lead.business_id !== business.id) notFound();
 
   const quotes = await getQuotesForLead(lead.id);
@@ -34,7 +33,7 @@ export default async function LeadDetailPage({
 
   let attachmentUrl: string | null = null;
   if (lead.attachment_url) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data } = await supabase.storage
       .from("lead-attachments")
       .createSignedUrl(lead.attachment_url, 60 * 60);

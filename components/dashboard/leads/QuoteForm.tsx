@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Label, Input, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { createQuote, type LeadActionState } from "@/app/dashboard/leads/actions";
@@ -24,7 +25,7 @@ export function QuoteForm({
   defaultPrice: number;
 }) {
   const initialState: LeadActionState = null;
-  const [state, formAction] = useFormState(createQuote, initialState);
+  const [state, formAction] = useActionState(createQuote, initialState);
 
   const inFourWeeks = new Date();
   inFourWeeks.setDate(inFourWeeks.getDate() + 28);

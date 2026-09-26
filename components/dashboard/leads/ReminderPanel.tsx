@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Bell, X } from "lucide-react";
 import { Label, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -24,7 +25,7 @@ export function ReminderPanel({
   reminderAt: string | null;
 }) {
   const initialState: LeadActionState = null;
-  const [state, formAction] = useFormState(setReminder, initialState);
+  const [state, formAction] = useActionState(setReminder, initialState);
 
   return (
     <div id="erinnerung" className="card-surface p-6">

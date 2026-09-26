@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { MessageSquareText, FileText, BellPlus, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { updateLeadStatus, type LeadActionState } from "@/app/dashboard/leads/actions";
@@ -19,7 +20,7 @@ function StatusButton({
   children: React.ReactNode;
 }) {
   const initialState: LeadActionState = null;
-  const [, formAction] = useFormState(updateLeadStatus, initialState);
+  const [, formAction] = useActionState(updateLeadStatus, initialState);
 
   return (
     <form action={formAction}>

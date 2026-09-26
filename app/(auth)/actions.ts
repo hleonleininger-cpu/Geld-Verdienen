@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
+import { safeRedirectTarget } from "@/lib/safeRedirect";
 
 export type AuthActionState = { error?: string; message?: string } | null;
 
@@ -16,21 +18,22 @@ export async function signIn(
 ): Promise<AuthActionState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const redirectTo = String(formData.get("redirectTo") ?? "/dashboard");
+  const redirectTo = safeRedirectTarget(String(formData.get("redirectTo") ?? "/dashboard"));
 
   if (!email || !password) {
     return { error: "Bitte E-Mail und Passwort angeben." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    logger.warn("auth.signIn", "Login fehlgeschlagen");
     return { error: "Login fehlgeschlagen. Bitte E-Mail und Passwort prüfen." };
   }
 
   revalidatePath("/", "layout");
-  redirect(redirectTo || "/dashboard");
+  redirect(redirectTo);
 }
 
 export async function signUp(
@@ -47,7 +50,7 @@ export async function signUp(
     return { error: "Das Passwort muss mindestens 8 Zeichen lang sein." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -55,6 +58,10 @@ export async function signUp(
   });
 
   if (error) {
+    // error.message stammt von Supabase Auth (kuratierte, nutzersichere
+    // Meldungen wie "User already registered"), kein roher DB-Fehler –
+    // trotzdem zusätzlich serverseitig geloggt für Observability.
+    logger.warn("auth.signUp", "Registrierung fehlgeschlagen", { reason: error.message });
     return { error: "Registrierung fehlgeschlagen: " + error.message };
   }
 
@@ -80,7 +87,7 @@ export async function requestPasswordReset(
     return { error: "Bitte gib deine E-Mail-Adresse an." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl()}/auth/callback?next=/reset-password/confirm`,
   });
@@ -101,7 +108,7 @@ export async function updatePassword(
     return { error: "Das Passwort muss mindestens 8 Zeichen lang sein." };
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) {
     return {
@@ -112,6 +119,9 @@ export async function updatePassword(
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
+    logger.warn("auth.updatePassword", "Passwort-Update fehlgeschlagen", {
+      reason: error.message,
+    });
     return { error: "Passwort konnte nicht geändert werden: " + error.message };
   }
 
@@ -119,7 +129,7 @@ export async function updatePassword(
 }
 
 export async function signOut() {
-  const supabase = createClient();
+  const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
   redirect("/");

@@ -3,11 +3,13 @@ import { Label, Input } from "@/components/ui/Field";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { signIn } from "@/app/(auth)/actions";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { redirectTo?: string };
+  searchParams: Promise<{ redirectTo?: string; error?: string }>;
 }) {
+  const { redirectTo, error } = await searchParams;
+
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-ink-950">
@@ -17,11 +19,17 @@ export default function LoginPage({
         Melde dich an, um deine Anfragen zu verwalten.
       </p>
 
+      {error && (
+        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
       <div className="mt-7">
         <AuthForm
           action={signIn}
           submitLabel="Anmelden"
-          hiddenFields={{ redirectTo: searchParams.redirectTo ?? "/dashboard" }}
+          hiddenFields={{ redirectTo: redirectTo ?? "/dashboard" }}
         >
           <div>
             <Label htmlFor="email">E-Mail</Label>

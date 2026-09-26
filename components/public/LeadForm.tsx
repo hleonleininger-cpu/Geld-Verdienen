@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { CheckCircle2 } from "lucide-react";
 import { Label, Input, Textarea, FieldHint } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -23,7 +24,7 @@ export function LeadForm({
   serviceExamples: string[];
 }) {
   const initialState: LeadFormState = null;
-  const [state, formAction] = useFormState(submitLead, initialState);
+  const [state, formAction] = useActionState(submitLead, initialState);
 
   if (state?.success) {
     return (

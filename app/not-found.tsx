@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { ButtonLink } from "@/components/ui/Button";
+
+export const metadata: Metadata = {
+  title: "Seite nicht gefunden",
+  robots: { index: false, follow: false },
+};
 
 export default function NotFound() {
   return (

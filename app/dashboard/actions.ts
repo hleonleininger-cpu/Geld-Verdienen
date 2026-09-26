@@ -3,11 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/format";
-import { INDUSTRIES } from "@/lib/industries";
+import { logger } from "@/lib/logger";
+import { createBusinessSchema, updateBusinessProfileSchema } from "@/lib/validation";
 
 export type BusinessActionState = { error?: string; message?: string } | null;
 
-async function uniqueSlug(supabase: ReturnType<typeof createClient>, base: string) {
+const GENERIC_ERROR = "Das hat leider nicht funktioniert. Bitte versuche es erneut.";
+const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const MAX_LOGO_BYTES = 3 * 1024 * 1024;
+
+async function uniqueSlug(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  base: string
+) {
   let candidate = base || "betrieb";
   let attempt = 0;
   while (attempt < 20) {
@@ -27,39 +35,40 @@ export async function createBusiness(
   _prev: BusinessActionState,
   formData: FormData
 ): Promise<BusinessActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) {
     return { error: "Bitte melde dich erneut an." };
   }
 
-  const businessName = String(formData.get("business_name") ?? "").trim();
-  const industry = String(formData.get("industry") ?? "");
-  const phone = String(formData.get("phone") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-
-  if (!businessName) {
-    return { error: "Bitte gib deinen Unternehmensnamen an." };
-  }
-  if (!(industry in INDUSTRIES)) {
-    return { error: "Bitte wähle eine Branche aus." };
+  const parsed = createBusinessSchema.safeParse({
+    business_name: formData.get("business_name"),
+    industry: formData.get("industry"),
+    phone: formData.get("phone"),
+    email: formData.get("email"),
+    description: formData.get("description"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Bitte prüfe deine Angaben." };
   }
 
-  const slug = await uniqueSlug(supabase, slugify(businessName));
+  const slug = await uniqueSlug(supabase, slugify(parsed.data.business_name));
 
   const { error } = await supabase.from("businesses").insert({
     owner_id: userData.user.id,
-    business_name: businessName,
+    business_name: parsed.data.business_name,
     slug,
-    industry,
-    phone: phone || null,
-    email: email || userData.user.email || null,
-    description: description || null,
+    industry: parsed.data.industry,
+    phone: parsed.data.phone || null,
+    email: parsed.data.email || userData.user.email || null,
+    description: parsed.data.description || null,
   });
 
   if (error) {
-    return { error: "Unternehmen konnte nicht angelegt werden: " + error.message };
+    logger.error("business.create", "Insert fehlgeschlagen", error, {
+      ownerId: userData.user.id,
+    });
+    return { error: GENERIC_ERROR };
   }
 
   revalidatePath("/dashboard", "layout");
@@ -70,58 +79,73 @@ export async function updateBusinessProfile(
   _prev: BusinessActionState,
   formData: FormData
 ): Promise<BusinessActionState> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) {
     return { error: "Bitte melde dich erneut an." };
   }
 
-  const businessId = String(formData.get("business_id") ?? "");
-  const businessName = String(formData.get("business_name") ?? "").trim();
-  const industry = String(formData.get("industry") ?? "");
-  const phone = String(formData.get("phone") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-
-  if (!businessName) {
-    return { error: "Bitte gib deinen Unternehmensnamen an." };
-  }
-  if (!(industry in INDUSTRIES)) {
-    return { error: "Bitte wähle eine Branche aus." };
+  const parsed = updateBusinessProfileSchema.safeParse({
+    business_id: formData.get("business_id"),
+    business_name: formData.get("business_name"),
+    industry: formData.get("industry"),
+    phone: formData.get("phone"),
+    email: formData.get("email"),
+    description: formData.get("description"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Bitte prüfe deine Angaben." };
   }
 
   let logoUrl: string | undefined;
   const logo = formData.get("logo");
   if (logo instanceof File && logo.size > 0) {
-    if (logo.size > 3 * 1024 * 1024) {
+    if (logo.size > MAX_LOGO_BYTES) {
       return { error: "Das Logo darf maximal 3 MB groß sein." };
     }
-    const extension = logo.name.split(".").pop() ?? "png";
+    if (!ALLOWED_LOGO_TYPES.includes(logo.type)) {
+      return { error: "Erlaubt sind nur PNG-, JPG- oder WEBP-Bilder." };
+    }
+    const extension = logo.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
     const path = `${userData.user.id}/logo.${extension}`;
     const { error: uploadError } = await supabase.storage
       .from("logos")
       .upload(path, logo, { upsert: true, contentType: logo.type });
     if (uploadError) {
+      logger.error("business.updateProfile", "Logo-Upload fehlgeschlagen", uploadError, {
+        ownerId: userData.user.id,
+      });
       return { error: "Logo konnte nicht hochgeladen werden." };
     }
     logoUrl = supabase.storage.from("logos").getPublicUrl(path).data.publicUrl;
   }
 
-  const { error } = await supabase
+  // `.eq("owner_id", ...)` ist zusaetzlich zu RLS (businesses_update_own)
+  // gesetzt: so bekommen wir unten ueber `data`/`count` eine ehrliche
+  // Rueckmeldung, falls `business_id` aus irgendeinem Grund nicht (mehr)
+  // dem eingeloggten Nutzer gehoert, statt eines stillen No-ops.
+  const { data, error } = await supabase
     .from("businesses")
     .update({
-      business_name: businessName,
-      industry,
-      phone: phone || null,
-      email: email || null,
-      description: description || null,
+      business_name: parsed.data.business_name,
+      industry: parsed.data.industry,
+      phone: parsed.data.phone || null,
+      email: parsed.data.email || null,
+      description: parsed.data.description || null,
       ...(logoUrl ? { logo_url: logoUrl } : {}),
     })
-    .eq("id", businessId)
-    .eq("owner_id", userData.user.id);
+    .eq("id", parsed.data.business_id)
+    .eq("owner_id", userData.user.id)
+    .select("id");
 
   if (error) {
-    return { error: "Profil konnte nicht gespeichert werden: " + error.message };
+    logger.error("business.updateProfile", "Update fehlgeschlagen", error, {
+      businessId: parsed.data.business_id,
+    });
+    return { error: GENERIC_ERROR };
+  }
+  if (!data || data.length === 0) {
+    return { error: "Dieses Unternehmen gehört nicht zu deinem Konto." };
   }
 
   revalidatePath("/dashboard", "layout");

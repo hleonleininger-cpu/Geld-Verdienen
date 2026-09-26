@@ -1,31 +1,38 @@
 import Link from "next/link";
-import { Bell } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/ui/Card";
 import { LeadListItem } from "@/components/dashboard/LeadListItem";
 import { getCurrentBusiness } from "@/lib/data/business";
-import { getLeadsForBusiness, computeStats } from "@/lib/data/leads";
+import { getLeadsPage, getDashboardStats, getUpcomingReminders } from "@/lib/data/leads";
 import { formatCurrencyEUR, formatDateTimeDe, STATUS_LABELS, STATUS_ORDER } from "@/lib/format";
 import type { LeadStatus } from "@/types/database";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: { status?: string };
+  searchParams: Promise<{ status?: string; page?: string }>;
 }) {
   const business = await getCurrentBusiness();
   if (!business) return null;
 
-  const leads = await getLeadsForBusiness(business.id);
-  const stats = computeStats(leads);
+  const { status, page: pageParam } = await searchParams;
+  const activeStatus = status as LeadStatus | undefined;
+  const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
 
-  const activeStatus = searchParams.status as LeadStatus | undefined;
-  const filteredLeads = activeStatus
-    ? leads.filter((lead) => lead.status === activeStatus)
-    : leads;
+  const [stats, leadsPage, reminders] = await Promise.all([
+    getDashboardStats(business.id),
+    getLeadsPage(business.id, { status: activeStatus, page }),
+    getUpcomingReminders(business.id, 5),
+  ]);
 
-  const reminders = leads
-    .filter((lead) => lead.reminder_at)
-    .sort((a, b) => new Date(a.reminder_at!).getTime() - new Date(b.reminder_at!).getTime());
+  const totalPages = Math.max(1, Math.ceil(leadsPage.total / leadsPage.pageSize));
+  const pageHref = (targetPage: number) => {
+    const params = new URLSearchParams();
+    if (activeStatus) params.set("status", activeStatus);
+    if (targetPage > 1) params.set("page", String(targetPage));
+    const qs = params.toString();
+    return qs ? `/dashboard?${qs}` : "/dashboard";
+  };
 
   return (
     <div className="space-y-8">
@@ -68,27 +75,61 @@ export default async function DashboardPage({
       <div>
         <div className="mb-4 flex flex-wrap gap-2">
           <FilterPill href="/dashboard" active={!activeStatus}>
-            Alle ({leads.length})
+            Alle ({stats.totalCount})
           </FilterPill>
-          {STATUS_ORDER.map((status) => (
-            <FilterPill key={status} href={`/dashboard?status=${status}`} active={activeStatus === status}>
-              {STATUS_LABELS[status]} ({leads.filter((l) => l.status === status).length})
+          {STATUS_ORDER.map((s) => (
+            <FilterPill key={s} href={`/dashboard?status=${s}`} active={activeStatus === s}>
+              {STATUS_LABELS[s]} ({stats.statusCounts[s]})
             </FilterPill>
           ))}
         </div>
 
-        {filteredLeads.length === 0 ? (
+        {leadsPage.leads.length === 0 ? (
           <div className="card-surface p-10 text-center text-sm text-ink-500">
-            {leads.length === 0
+            {stats.totalCount === 0
               ? "Noch keine Anfragen. Teile deinen Anfrage-Link, um erste Kunden zu gewinnen."
               : "Keine Anfragen mit diesem Status."}
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredLeads.map((lead) => (
-              <LeadListItem key={lead.id} lead={lead} />
-            ))}
-          </div>
+          <>
+            <div className="space-y-3">
+              {leadsPage.leads.map((lead) => (
+                <LeadListItem key={lead.id} lead={lead} />
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="mt-5 flex items-center justify-between text-sm">
+                <Link
+                  href={pageHref(page - 1)}
+                  aria-disabled={page <= 1}
+                  className={`flex items-center gap-1 rounded-lg border border-ink-100 px-3 py-1.5 font-medium ${
+                    page <= 1
+                      ? "pointer-events-none text-ink-300"
+                      : "text-ink-700 hover:border-ink-300"
+                  }`}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Zurück
+                </Link>
+                <span className="text-ink-400">
+                  Seite {page} von {totalPages}
+                </span>
+                <Link
+                  href={pageHref(page + 1)}
+                  aria-disabled={page >= totalPages}
+                  className={`flex items-center gap-1 rounded-lg border border-ink-100 px-3 py-1.5 font-medium ${
+                    page >= totalPages
+                      ? "pointer-events-none text-ink-300"
+                      : "text-ink-700 hover:border-ink-300"
+                  }`}
+                >
+                  Weiter
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

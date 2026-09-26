@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Label, Input, Textarea, Select, FieldHint } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { INDUSTRY_LIST } from "@/lib/industries";
@@ -17,7 +18,7 @@ function SubmitButton() {
 
 export function CreateBusinessForm() {
   const initialState: BusinessActionState = null;
-  const [state, formAction] = useFormState(createBusiness, initialState);
+  const [state, formAction] = useActionState(createBusiness, initialState);
 
   return (
     <div className="mx-auto max-w-lg">

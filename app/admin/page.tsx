@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/data/business";
-import { createAdminClient, isAdminEmail } from "@/lib/supabase/admin";
+import { createAdminClient, isCurrentUserAdmin } from "@/lib/supabase/admin";
 import { StatCard } from "@/components/ui/Card";
 import { formatDateTimeDe } from "@/lib/format";
 import { getIndustry } from "@/lib/industries";
 
-export const metadata: Metadata = { title: "Admin" };
+export const metadata: Metadata = { title: "Admin", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const user = await getCurrentUser();
+  // Autorisierung laeuft vollstaendig serverseitig ueber die DB (public.users.is_admin)
+  // plus ADMIN_EMAILS als Server-only-Bootstrap-Fallback – niemals ueber
+  // Client-State. Siehe lib/supabase/admin.ts und docs/SECURITY.md.
+  const { user, isAdmin } = await isCurrentUserAdmin();
   if (!user) redirect("/login");
 
-  if (!isAdminEmail(user.email)) {
+  if (!isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-sand-50 px-5">
         <div className="card-surface max-w-sm p-8 text-center">

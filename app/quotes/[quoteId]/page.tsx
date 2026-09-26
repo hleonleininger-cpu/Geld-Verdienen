@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -7,20 +8,22 @@ import { formatCurrencyEUR, formatDateDe, formatDateTimeDe } from "@/lib/format"
 import { PrintButton } from "@/components/PrintButton";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default async function QuotePage({
   params,
 }: {
-  params: { quoteId: string };
+  params: Promise<{ quoteId: string }>;
 }) {
+  const { quoteId } = await params;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: quote } = await supabase
     .from("quotes")
     .select("*")
-    .eq("id", params.quoteId)
+    .eq("id", quoteId)
     .maybeSingle();
   if (!quote) notFound();
 
@@ -37,6 +40,13 @@ export default async function QuotePage({
     .eq("id", lead.business_id)
     .maybeSingle();
   if (!business) notFound();
+
+  // Explizite Ownership-Pruefung zusaetzlich zu RLS ("Do not rely on UI
+  // restrictions as authorization" – hier zusaetzlich nicht nur auf RLS):
+  // `businesses_select_public` erlaubt JEDEM eingeloggten Nutzer, fremde
+  // Business-Datensaetze zu lesen (oeffentliche Anfrageseite!), daher darf
+  // diese Seite sich nicht allein auf "die Query kam zurueck" verlassen.
+  if (business.owner_id !== user.id) notFound();
 
   return (
     <div className="min-h-screen bg-sand-100 py-8 print:bg-white print:py-0">

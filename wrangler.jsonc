@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "anfragepilot",
+  "main": ".open-next/worker.js",
+  // 2024-09-23 is the minimum compatibility_date @opennextjs/cloudflare
+  // documents as required (nodejs_compat). We deliberately keep the
+  // documented minimum instead of guessing a newer date: each
+  // compatibility_date can silently change runtime semantics (fetch,
+  // timers, streams), and a newer date should only be adopted after
+  // reading Cloudflare's compatibility-date changelog and re-testing
+  // `npm run cf:build && npm run cf:preview`.
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
