@@ -5,12 +5,14 @@ Production-Hardening-Pass zusammen: was geprüft wurde, was gefunden und
 behoben wurde, und was bewusst (noch) nicht umgesetzt ist.
 
 Hinweis zum Datenmodell: Tabellen wie `business_members`, `customers`,
-`appointments`, `tasks`, `files`, `products`, `orders` existieren in
-AnfragePilot weiterhin **nicht** (bewusst nicht gebaute Features, siehe
-`docs/PROJECT_STATUS.md`). Seit der Produkt-Phase kamen dagegen echte neue
-Tabellen hinzu: `services`, `activity_events`, `notifications`,
-`referral_events`, `analytics_events` (siehe Abschnitt 1a). Alles unten
-bezieht sich auf das tatsächliche Schema in `supabase/schema.sql`.
+`tasks`, `files`, `products`, `orders` existieren in AnfragePilot weiterhin
+**nicht** (bewusst nicht gebaute Features, siehe `docs/PROJECT_STATUS.md`).
+Seit der Produkt-Phase bzw. Conversion-Funnel-Phase kamen dagegen echte
+neue Tabellen hinzu: `services`, `activity_events`, `notifications`,
+`referral_events`, `analytics_events` (siehe Abschnitt 1a) sowie
+`request_forms`, `request_form_fields`, `blocked_times`, `appointments`,
+`processed_webhook_events` (siehe Abschnitt 1b). Alles unten bezieht sich
+auf das tatsächliche Schema in `supabase/schema.sql`.
 
 ## 1. Row Level Security (RLS)
 
@@ -107,6 +109,48 @@ Trigger `log_lead_created_activity` (`SECURITY DEFINER`, an
 `public.leads` gehängt) – auch für den anonymen Insert über das
 öffentliche Formular, da Trigger-Funktionen mit den Rechten ihres
 Definers laufen, nicht des aufrufenden `anon`-Keys.
+
+## 1b. RLS für die Conversion-Funnel-Phase (Formular-Builder, Termine, Webhook-Idempotenz)
+
+| Tabelle | SELECT | INSERT | UPDATE/DELETE |
+| --- | --- | --- | --- |
+| `request_forms` | Owner sieht alle eigenen; `anon`+`authenticated` sehen nur `active = true` UND zugehöriges Business `published = true` | nur Owner, **und nur mit** `business_has_custom_forms_feature()` (Pro-Plan – siehe unten) | nur Owner (Update bewusst NICHT gegated, damit ein bestehendes Formular nach einem Downgrade weiter nutzbar bleibt) |
+| `request_form_fields` | Owner sieht alle eigenen (über `form_id`); `anon`+`authenticated` sehen nur Felder eines aktiven Formulars eines veröffentlichten Business | nur Owner des zugehörigen Formulars | nur Owner |
+| `blocked_times` | nur Owner | nur Owner | nur Owner |
+| `appointments` | nur Owner | **keine** anon/authenticated-Policy – Buchung ausschließlich über die RPC `book_appointment` | nur Owner (mit `WITH CHECK`) |
+| `processed_webhook_events` | **niemand** über PostgREST (keine Policy, auch nicht für den Owner) – nur der Service-Role-Client (Webhook-Route) | wie SELECT: nur Service-Role | wie SELECT: nur Service-Role |
+
+**Gefundenes und behobenes Problem (Audit vor dem ersten zahlenden
+Kunden):** `custom_forms` (Formular-Builder, Pro-Plan) wurde zunächst nur
+in der Server Action `createForm()` geprüft, nicht in RLS – anders als
+`calendar` (Terminbuchung), das von Anfang an über
+`business_has_calendar_feature()` auch auf DB-Ebene durchgesetzt wurde. Ein
+Free-Plan-Nutzer hätte per direktem PostgREST-Request (eigener JWT, ohne
+die Next.js-App) ein `request_forms`-Row anlegen und aktivieren können.
+Fix (Migration `0005_entitlement_hardening.sql`): eine neue Funktion
+`business_has_custom_forms_feature()` (identische Logik wie
+`business_has_calendar_feature()`) wird jetzt zusätzlich in der
+`WITH CHECK`-Klausel von `request_forms_insert_own` geprüft. Nur das
+Anlegen ist gegated, nicht das Bearbeiten – ein Downgrade darf ein
+bestehendes Formular nicht unbrauchbar machen.
+
+**Terminbuchung – Doppelbuchung ist auf DB-Ebene ausgeschlossen:** Die
+generierte Spalte `appointments.time_range` (`tstzrange`) trägt eine
+`EXCLUDE USING gist (business_id WITH =, time_range WITH &&)`-Constraint
+(benötigt die Extension `btree_gist`). Das ist kein Race-Condition-Risiko:
+Postgres prüft Exclusion-Constraints wie Unique-Constraints atomar beim
+Insert – zwei gleichzeitige Buchungsversuche für denselben Slot serialisieren
+sich, der zweite schlägt mit `exclusion_violation` fehl (von
+`book_appointment()` als `slot_unavailable` weitergereicht). Die RPC prüft
+zusätzlich Geschäftszeiten/blockierte Zeiten serverseitig (nicht nur der
+UI-berechnete Slot wird vertraut), bevor sie den Insert versucht.
+
+**Terminbuchung – Feature-Gate:** `business_has_calendar_feature()` (siehe
+Abschnitt 5a bzw. `supabase/schema.sql`) spiegelt `lib/entitlements.ts` und
+wird sowohl von `get_available_appointment_slots()` als auch von
+`book_appointment()` geprüft – beide geben bei fehlendem Feature `[]`
+bzw. `raise exception 'feature_not_available'` zurück, unabhängig davon,
+was das Frontend anzeigt.
 
 ## 2. Autorisierung in Server Actions (nicht nur RLS)
 

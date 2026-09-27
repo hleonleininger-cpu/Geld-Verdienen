@@ -86,7 +86,12 @@ $$;
 -- ---------------------------------------------------------------------
 create table if not exists public.businesses (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users (id) on delete cascade,
+  -- `unique`: genau ein Business pro Nutzer. Ohne diese Constraint koennte
+  -- ein doppeltes/gleichzeitiges Absenden von Onboarding-Schritt 1 zwei
+  -- Zeilen fuer denselben Owner anlegen, wonach `getCurrentBusiness()`
+  -- (`.maybeSingle()`) mit einem Fehler abbricht und den Nutzer aus dem
+  -- eigenen Dashboard aussperrt.
+  owner_id uuid not null unique references auth.users (id) on delete cascade,
   business_name text not null check (char_length(business_name) between 1 and 120),
   slug text not null unique check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
   industry text not null,
@@ -986,9 +991,58 @@ create policy "request_forms_select_public"
     and business_id in (select id from public.businesses where published = true)
   );
 
+-- Server-seitige Plan-Pruefung fuer das Formular-Builder-Feature (Pro-Plan,
+-- siehe PLAN_FEATURES.custom_forms in lib/entitlements.ts). Ohne diese
+-- DB-seitige Spiegelung koennte ein Free-Plan-Nutzer per direktem
+-- PostgREST-Request (eigener JWT, ohne die Next.js-App zu benutzen) ein
+-- `request_forms`-Row anlegen und aktivieren, obwohl `createForm()` das
+-- Anlegen serverseitig eigentlich blockiert – "Never activate paid
+-- features solely based on client/browser state" gilt genauso fuer
+-- Formulare wie fuer Termine (business_has_calendar_feature() unten).
+-- Bestehende Formulare bleiben nach einem Downgrade bewusst nutzbar (kein
+-- Datenverlust) – daher gated nur INSERT (das "Anlegen"), nicht UPDATE.
+create or replace function public.business_has_custom_forms_feature(p_business_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_plan text;
+  v_subscription_status text;
+  v_trial_ends_at timestamptz;
+  v_effective_plan text;
+begin
+  select plan, subscription_status, trial_ends_at
+    into v_plan, v_subscription_status, v_trial_ends_at
+  from public.businesses
+  where id = p_business_id;
+
+  if not found then
+    return false;
+  end if;
+
+  if v_subscription_status = 'active' then
+    v_effective_plan := v_plan;
+  elsif v_subscription_status = 'trialing'
+        and v_trial_ends_at is not null
+        and v_trial_ends_at > now() then
+    v_effective_plan := 'pro';
+  else
+    v_effective_plan := 'free';
+  end if;
+
+  return v_effective_plan in ('pro', 'business');
+end;
+$$;
+
 create policy "request_forms_insert_own"
   on public.request_forms for insert
-  with check (business_id in (select id from public.businesses where owner_id = auth.uid()));
+  with check (
+    business_id in (select id from public.businesses where owner_id = auth.uid())
+    and public.business_has_custom_forms_feature(business_id)
+  );
 
 create policy "request_forms_update_own"
   on public.request_forms for update

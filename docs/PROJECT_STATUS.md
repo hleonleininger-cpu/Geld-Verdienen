@@ -1,11 +1,55 @@
 # Project Status
 
-Stand: **Conversion-Funnel-Phase** abgeschlossen (nach Produkt-Phase +
-Production-Hardening-Pass, siehe Historie weiter unten). AnfragePilot
-bildet jetzt den vollständigen Kunden-Funnel ab: BESUCHER → BUSINESS-SEITE
-→ ANFRAGE → LEAD → BENACHRICHTIGUNG → ANTWORT → ANGEBOT → KUNDE SIEHT
-ANGEBOT → KUNDE NIMMT AN → TERMIN → GEWONNEN. Details je Schritt in
-`docs/PRODUCT_FLOWS.md`.
+Stand: **Production-Readiness-Audit** abgeschlossen (nach
+Conversion-Funnel-Phase + Produkt-Phase + Production-Hardening-Pass, siehe
+Historie weiter unten). AnfragePilot bildet den vollständigen Kunden-Funnel
+ab: BESUCHER → BUSINESS-SEITE → ANFRAGE → LEAD → BENACHRICHTIGUNG →
+ANTWORT → ANGEBOT → KUNDE SIEHT ANGEBOT → KUNDE NIMMT AN → TERMIN →
+GEWONNEN. Details je Schritt in `docs/PRODUCT_FLOWS.md`.
+
+## Production-Readiness-Audit: was gefunden und behoben wurde
+
+Ziel dieses Passes war NICHT, neue Features zu bauen, sondern zu prüfen,
+ob die Conversion-Funnel-Phase tatsächlich so funktioniert wie
+dokumentiert, und alles zu schließen, was einen ersten zahlenden Kunden
+verhindern würde. Migration `0005_entitlement_hardening.sql`:
+
+- **`custom_forms`-Feature war nicht auf DB-Ebene durchgesetzt** (im
+  Gegensatz zu `calendar`, das von Anfang an `business_has_calendar_feature()`
+  nutzte): ein Free-Plan-Nutzer hätte per direktem, an der Next.js-App
+  vorbeigehendem PostgREST-Request (eigener JWT) ein Formular anlegen und
+  veröffentlichen können. Fix: neue Funktion
+  `business_has_custom_forms_feature()`, zusätzlich in der `WITH CHECK`-
+  Klausel von `request_forms_insert_own` geprüft. Nur das Anlegen ist
+  gegated, nicht das Bearbeiten (Downgrade darf bestehende Formulare nicht
+  unbrauchbar machen). Siehe `docs/SECURITY.md`, Abschnitt 1b.
+- **`businesses.owner_id` hatte keine UNIQUE-Constraint**: ein doppeltes/
+  gleichzeitiges Absenden von Onboarding-Schritt 1 hätte zwei Business-
+  Zeilen für denselben Nutzer anlegen können, wonach `getCurrentBusiness()`
+  (`.maybeSingle()`) mit einem Fehler abbricht und den Nutzer aus dem
+  eigenen Dashboard aussperrt. Fix: `unique (owner_id)`. `supabase/seed.sql`
+  musste entsprechend auf ein einzelnes Demo-Unternehmen reduziert werden
+  (alle 5 Branchen weiterhin unter `/demo` ansehbar).
+- **`app/sitemap.ts` listete unveröffentlichte und (potenzielle) Demo-
+  Businesses**: kein Datenleck (die Seite selbst gated bereits korrekt auf
+  `published`), aber schlecht für SEO (Suchmaschinen bekommen URLs, die
+  404 liefern). Fix: `.eq("published", true).eq("is_demo", false)`.
+  `/demo` zur Sitemap ergänzt, `/onboarding` und `/api/` zu `robots.ts`s
+  Disallow-Liste ergänzt.
+- **Mehrere Dokumentationsdateien waren veraltet**: `docs/SECURITY.md`
+  behauptete noch, es gäbe keine `appointments`-Tabelle (falsch seit der
+  Conversion-Funnel-Phase); `docs/DEPLOYMENT.md` erwähnte weder
+  `RESEND_API_KEY`/`EMAIL_FROM_ADDRESS` als Wrangler-Secrets noch Migration
+  0004/0005 noch die `btree_gist`-Extension. Alle aktualisiert.
+- **Neuer pgTAP-Test** `09_entitlement_hardening.test.sql` für die beiden
+  DB-Fixes oben (nicht in dieser Sandbox ausgeführt, siehe Abschnitt
+  "NICHT verifiziert" unten).
+- Ansonsten: kein einziger Bruch im End-to-End-Funnel gefunden (VISITOR →
+  ... → WON wurde Schritt für Schritt anhand des tatsächlichen Codes
+  nachvollzogen, nicht nur anhand der Doku) – die Kernlogik (Doppelbuchungs-
+  Sperre, Webhook-Signatur/Idempotenz, Plan-Gating für Termine,
+  Fehlerresilienz bei E-Mail/Analytics) war bereits korrekt aus der
+  vorherigen Phase.
 
 ## Conversion-Funnel-Phase: was neu hinzukam
 
@@ -267,12 +311,13 @@ Nach **jedem** der oben genannten Arbeitsschritte, nicht nur am Ende:
 
 ## NICHT in dieser Sandbox verifiziert
 
-- **pgTAP-RLS-Tests** (`supabase/tests/database/`, inkl. der vier neuen
+- **pgTAP-RLS-Tests** (`supabase/tests/database/`, inkl. der fünf neuen
   Dateien `05_public_quote_portal.test.sql`, `06_product_phase_rls.test.sql`,
   `07_conversion_funnel_token_isolation.test.sql`,
-  `08_webhook_idempotency.test.sql`): kein Docker/`supabase`-CLI in dieser
-  Sandbox verfügbar (`supabase: command not found`). Alle vier Dateien
-  sind statisch geprüfter, wohlgeformter SQL-Code nach demselben Muster
+  `08_webhook_idempotency.test.sql`, `09_entitlement_hardening.test.sql`):
+  kein Docker/`supabase`-CLI in dieser Sandbox verfügbar (`supabase:
+  command not found`). Alle fünf Dateien sind statisch geprüfter,
+  wohlgeformter SQL-Code nach demselben Muster
   wie die bereits etablierten Dateien, aber **nicht** in dieser Sandbox
   ausgeführt.
 - **Live-Supabase-Integrationstests** (echter Login-Flow, echtes

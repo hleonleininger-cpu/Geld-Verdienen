@@ -66,9 +66,30 @@ npm run cf:preview   # baut + startet lokal via wrangler (Workers-Runtime, nicht
    npx wrangler secret put STRIPE_PRICE_PRO
    npx wrangler secret put STRIPE_PRICE_BUSINESS
    ```
+   Optional, nur falls echter E-Mail-Versand aktiv sein soll (siehe
+   `docs/EMAIL.md` – ohne diese Werte läuft `ConsoleEmailProvider`, der nur
+   loggt statt zu versenden):
+   ```bash
+   npx wrangler secret put RESEND_API_KEY
+   npx wrangler secret put EMAIL_FROM_ADDRESS
+   ```
    Für lokale Entwicklung gegen die Workers-Runtime (`npm run cf:preview`)
    können dieselben Variablen in einer nicht committeten `.dev.vars`-Datei
    stehen (siehe `.gitignore` – `.dev.vars` ist bereits ausgeschlossen).
+
+   **Wichtig zu `NEXT_PUBLIC_*`-Variablen:** Next.js ersetzt
+   `process.env.NEXT_PUBLIC_*` beim `next build` durch den zu diesem
+   Zeitpunkt gesetzten Wert – in JEDEM Code, der in ein Client-Bundle
+   gebündelt wird. Aktuell liest kein Client-Component-Code diese
+   Variablen (nur Server Components/Actions/Middleware, wo `process.env`
+   zur Laufzeit aus den Wrangler-Secrets kommt), daher funktioniert das
+   Setzen als reines Runtime-Secret bislang problemlos. Sollte künftig
+   client-seitiger Supabase-Zugriff (`lib/supabase/client.ts`, aktuell
+   ungenutzt) hinzukommen, MÜSSEN `NEXT_PUBLIC_SUPABASE_URL`/
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`/`NEXT_PUBLIC_SITE_URL` zusätzlich in der
+   Shell/CI-Umgebung gesetzt sein, in der `npm run cf:build`/`cf:deploy`
+   läuft – ein reines Wrangler-Secret reicht dann nicht mehr, weil der Wert
+   sonst als `undefined` in den Browser-Bundle einkompiliert wird.
 3. **Deployen:**
    ```bash
    npm run cf:deploy
@@ -86,17 +107,31 @@ npm run cf:preview   # baut + startet lokal via wrangler (Workers-Runtime, nicht
 ## Datenbank-Migrationen
 
 - **Neues Supabase-Projekt:** `supabase/schema.sql` einmalig im
-  SQL-Editor ausführen (konsolidierter, aktueller Stand).
+  SQL-Editor ausführen (konsolidierter, aktueller Stand – enthält bereits
+  alle Migrationen 0001-0005, inkl. Formular-Builder, Terminbuchung,
+  Webhook-Idempotenz und Entitlement-Härtung).
 - **Bereits bestehendes Projekt** (z. B. vom MVP-Stand vor diesem
   Hardening-Pass): die Dateien unter `supabase/migrations/` der Reihe nach
-  ausführen (`0001_initial_schema.sql` nur falls noch nicht geschehen,
-  danach `0002_production_hardening.sql`).
+  ausführen (`0001_initial_schema.sql` … bis `0005_entitlement_hardening.sql`,
+  jeweils nur falls noch nicht geschehen).
+- **Migration 0004** aktiviert die Postgres-Extension `btree_gist` selbst
+  (`create extension if not exists btree_gist;`) – auf Supabase-Standard-
+  Projekten ist das Anlegen von Extensions über den SQL-Editor mit dem
+  Projekt-eigenen Rechten normalerweise erlaubt; bei einer selbstgehosteten
+  Postgres-Instanz ggf. Superuser-Rechte für diesen einen Befehl nötig.
+- **Migration 0005** fügt `unique (owner_id)` auf `businesses` hinzu. Falls
+  ein bestehendes Projekt (z. B. über `supabase/seed.sql` vor diesem Fix)
+  bereits mehrere Businesses unter demselben `owner_id` hat, schlägt diese
+  Migration fehl – vorher bereinigen (doppelte Zeilen zusammenführen oder
+  löschen).
 - **Künftige Änderungen:** immer als neue Datei
   `supabase/migrations/000N_beschreibung.sql` ergänzen UND die
   konsolidierte Fassung in `supabase/schema.sql` nachziehen, damit ein
   Fresh Install weiterhin mit einem einzigen Skript funktioniert.
-- Optional: `supabase/seed.sql` für Demo-Daten (siehe README.md für die
-  nötigen Anpassungen – Platzhalter-User-ID ersetzen).
+- Optional: `supabase/seed.sql` für EIN Demo-Unternehmen mit Beispieldaten
+  in deinem eigenen Account (Platzhalter-User-ID ersetzen, siehe Kommentar
+  im Skript). Alle 5 Branchen-Vorlagen ansehen kannst du ohne eigenen
+  Account unter `/demo`.
 
 ## Preview-Deployments
 
@@ -130,3 +165,7 @@ die vollständige Übersicht (Cloudflare-Dashboard-Rollback,
 - [ ] Falls Stripe genutzt wird: Webhook-Endpunkt in Stripe angelegt,
       `STRIPE_WEBHOOK_SECRET` gesetzt, Customer Portal im Stripe-Dashboard
       aktiviert (siehe `docs/BILLING.md`)
+- [ ] Falls echter E-Mail-Versand gewünscht ist: `RESEND_API_KEY`/
+      `EMAIL_FROM_ADDRESS` gesetzt, Absender-Domain in Resend verifiziert
+      (siehe `docs/EMAIL.md`) – sonst läuft der Console-Fallback (kein
+      Versand, nur Logging)
