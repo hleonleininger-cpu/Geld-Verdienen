@@ -48,7 +48,8 @@ export const PRICING_PLANS: PricingPlan[] = [
     features: [
       "Alles aus Starter",
       "Erweiterte Auswertungen",
-      "Kalender (bald verfügbar)",
+      "Eigene Anfrageformulare",
+      "Terminbuchung nach Angebotsannahme",
       "Priorisierter Support",
     ],
     cta: "Pro wählen",

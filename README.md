@@ -8,27 +8,44 @@ und erstellt daraus Angebote, die der Kunde online annehmen oder ablehnen
 kann – der volle Funnel von **Besucher → Registrierung → Onboarding →
 erste Anfrage → erstes Angebot → erster Kunde → bezahlter Plan**.
 
-Nach dem initialen MVP und einem Production-Hardening-Pass wurde eine
-**Produkt-Phase** umgesetzt: Onboarding-Wizard, Aktivierungs-Checkliste,
-Lead-Pipeline (Kanban + Liste), voller Angebots-Workflow mit öffentlichem
-Kunden-Portal, Timeline, Benachrichtigungen, Plan-/Trial-/Feature-Gating,
-eine Stripe-basierte Abrechnung, Referrals sowie Produkt-Analytics mit
-Admin-Wachstums-Dashboard. Details dazu in `docs/PROJECT_STATUS.md`.
-Stellen, an denen bewusst noch keine echte Integration existiert oder ein
-Feature bewusst nicht in vollem Umfang gebaut wurde (z. B. Kalender,
-Team-Mitglieder, Shop-Checkout), sind im Code und in dieser README klar
+Nach dem initialen MVP, einem Production-Hardening-Pass, einer
+**Produkt-Phase** (Onboarding-Wizard, Aktivierungs-Checkliste,
+Lead-Pipeline, Angebots-Workflow mit öffentlichem Kunden-Portal,
+Stripe-Abrechnung, Referrals, Produkt-Analytics) und einer
+**Conversion-Funnel-Phase** (eigener Formular-Builder, Terminbuchung nach
+Angebotsannahme, E-Mail-Versand, Demo-Modus unter `/demo`,
+umsatzorientiertes Dashboard) ist AnfragePilot jetzt bereit für den ersten
+echten, zahlenden Kunden. Details dazu in `docs/PROJECT_STATUS.md`.
+Stellen, an denen bewusst noch keine echte Integration existiert (Team-
+Mitglieder, Shop-Checkout), sind im Code und in dieser README klar
 gekennzeichnet.
+
+**Bereit zum Launchen?** Diese vier Dateien im Repo-Root führen Schritt
+für Schritt durch Deployment und Vertrieb, ohne dass etwas erraten werden
+muss:
+
+- [`LAUNCH_COMMANDS.md`](./LAUNCH_COMMANDS.md) – jeder Befehl, frische
+  Maschine bis live, in der richtigen Reihenfolge
+- [`DEPLOY_CHECKLIST.md`](./DEPLOY_CHECKLIST.md) – dieselben Schritte als
+  Checkliste mit Begründung, plus Smoke-Test nach jedem Deploy
+- [`SALES_CHECKLIST.md`](./SALES_CHECKLIST.md) – Produkt zeigen, ersten
+  Kunden gewinnen, Feedback einsammeln, auf einen bezahlten Plan bringen
+- [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) – 5-Minuten-Skript für ein
+  Verkaufsgespräch (Besucher → Anfrage → Angebot → Annahme → Termin)
+- [`FIRST_CUSTOMER.md`](./FIRST_CUSTOMER.md) – das erste echte Unternehmen
+  Schritt für Schritt onboarden
 
 **Weiterführende Dokumentation:**
 
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) – Aufbau der Anwendung
 - [`docs/SECURITY.md`](./docs/SECURITY.md) – RLS, Autorisierung, Secrets, Tests
-- [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) – Deployment-Anleitung
+- [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) – ausführliche Deployment-Anleitung
 - [`docs/DEPLOYMENT_ARCHITECTURE.md`](./docs/DEPLOYMENT_ARCHITECTURE.md) – Entscheidung Cloudflare Workers vs. Pages/vinext
 - [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md) – was zuletzt gemacht wurde, was noch offen ist
-- [`docs/PRODUCT_FLOWS.md`](./docs/PRODUCT_FLOWS.md) – der Aktivierungs-Funnel Schritt für Schritt, mit Dateiverweisen
+- [`docs/PRODUCT_FLOWS.md`](./docs/PRODUCT_FLOWS.md) – der komplette Funnel Schritt für Schritt, mit Dateiverweisen
 - [`docs/MONETIZATION.md`](./docs/MONETIZATION.md) – Pläne, Trial-Logik, was Feature-Gating tatsächlich durchsetzt
 - [`docs/BILLING.md`](./docs/BILLING.md) – Stripe-Integration, Webhook-Setup, `PaymentProvider`-Abstraktion
+- [`docs/EMAIL.md`](./docs/EMAIL.md) – Resend-Integration, Fallback-Verhalten ohne Konfiguration
 
 ## Tech-Stack
 
