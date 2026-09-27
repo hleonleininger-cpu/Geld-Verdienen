@@ -70,6 +70,40 @@ export async function startCheckout(
   redirect(result.data.url);
 }
 
+export type CancelSubscriptionState = { error?: string; message?: string } | null;
+
+/**
+ * Kuendigt das Abo direkt bei Stripe. Der DB-Status (`subscription_status`)
+ * wird bewusst NICHT hier gesetzt – das passiert ausschliesslich ueber den
+ * Webhook (`customer.subscription.updated`/`.deleted`), sobald Stripe die
+ * Kuendigung tatsaechlich verarbeitet hat ("Webhook remains source of
+ * truth"). Diese Action stoesst die Kuendigung nur an.
+ */
+export async function cancelSubscription(
+  _prev: CancelSubscriptionState,
+  _formData: FormData
+): Promise<CancelSubscriptionState> {
+  const business = await getCurrentBusiness();
+  if (!business) return { error: "Bitte melde dich erneut an." };
+  if (!business.stripe_subscription_id) {
+    return { error: "Du hast aktuell kein aktives Abo." };
+  }
+
+  const provider = getPaymentProvider();
+  if (!provider.isConfigured()) {
+    return { error: "Die Bezahlfunktion ist aktuell nicht eingerichtet." };
+  }
+
+  const result = await provider.cancelSubscription(business.stripe_subscription_id);
+  if (!result.ok) {
+    return { error: result.error ?? "Kündigung konnte nicht verarbeitet werden." };
+  }
+
+  return {
+    message: "Dein Abo wurde soeben gekündigt. Du bist ab sofort wieder im Free-Plan.",
+  };
+}
+
 export async function openBillingPortal(
   _prev: BillingActionState,
   _formData: FormData

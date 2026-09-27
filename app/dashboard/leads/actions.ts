@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentBusiness } from "@/lib/data/business";
 import { logActivity } from "@/lib/data/activity";
 import { computeQuoteTotals } from "@/lib/quotes";
+import { canTransitionLeadStatus, canTransitionQuoteStatus } from "@/lib/stateMachine";
 import { track } from "@/lib/analytics";
+import { getEmailProvider } from "@/lib/email";
+import { formatCurrencyEUR, formatDateDe } from "@/lib/format";
 import { logger } from "@/lib/logger";
 import {
   updateLeadStatusSchema,
@@ -54,6 +57,22 @@ export async function updateLeadStatus(
   if ("error" in ctx) return ctx;
 
   const supabase = await createClient();
+
+  const { data: current } = await supabase
+    .from("leads")
+    .select("status")
+    .eq("id", parsed.data.lead_id)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  if (!current) {
+    return { error: NOT_YOURS_ERROR };
+  }
+  if (!canTransitionLeadStatus(current.status, parsed.data.status)) {
+    return {
+      error: `Status kann nicht von "${current.status}" auf "${parsed.data.status}" geändert werden.`,
+    };
+  }
+
   const { data, error } = await supabase
     .from("leads")
     .update({ status: parsed.data.status })
@@ -78,7 +97,7 @@ export async function updateLeadStatus(
     payload: { status: parsed.data.status },
   });
 
-  if (parsed.data.status === "won") {
+  if (parsed.data.status === "won" && current.status !== "won") {
     await track("lead_won", { businessId: ctx.business.id });
   }
 
@@ -280,6 +299,17 @@ export async function createQuote(
   });
   await track("quote_created", { businessId: ctx.business.id });
 
+  // RLS ("quotes_select_own_business") schraenkt diese Zaehlung implizit
+  // auf die Angebote des eingeloggten Business ein – kein zusaetzlicher
+  // Join ueber leads.business_id noetig (Quotes haben keine eigene
+  // business_id-Spalte).
+  const { count: quoteCount } = await supabase
+    .from("quotes")
+    .select("id", { count: "exact", head: true });
+  if (quoteCount === 1) {
+    await track("first_quote", { businessId: ctx.business.id });
+  }
+
   revalidatePath(`/dashboard/leads/${parsed.data.lead_id}`);
   revalidatePath("/dashboard/quotes");
   revalidatePath("/dashboard");
@@ -307,7 +337,7 @@ export async function sendQuote(
 
   const { data: quote } = await supabase
     .from("quotes")
-    .select("id, status, lead_id")
+    .select("id, status, lead_id, title, price, valid_until, public_token")
     .eq("id", quoteId)
     .maybeSingle();
   if (!quote) {
@@ -318,14 +348,14 @@ export async function sendQuote(
   // `business_id`-Spalte) – siehe gleiches Muster in `createQuote` oben.
   const { data: lead } = await supabase
     .from("leads")
-    .select("id")
+    .select("id, customer_name, customer_email")
     .eq("id", quote.lead_id)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!lead) {
     return { error: NOT_YOURS_ERROR };
   }
-  if (quote.status !== "draft") {
+  if (!canTransitionQuoteStatus(quote.status, "sent")) {
     return { error: "Dieses Angebot wurde bereits versendet." };
   }
 
@@ -353,6 +383,22 @@ export async function sendQuote(
     type: "quote_sent",
   });
   await track("quote_sent", { businessId: ctx.business.id });
+
+  // Best effort: der Status ist bereits auf "sent" gesetzt, ein
+  // fehlgeschlagener E-Mail-Versand darf das nicht rueckgaengig machen.
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const emailProvider = getEmailProvider();
+  const emailResult = await emailProvider.sendQuoteEmail({
+    to: lead.customer_email,
+    businessName: ctx.business.business_name,
+    quoteTitle: quote.title,
+    totalFormatted: formatCurrencyEUR(quote.price),
+    validUntilFormatted: quote.valid_until ? formatDateDe(quote.valid_until) : null,
+    quoteUrl: `${siteUrl}/q/${quote.public_token}`,
+  });
+  if (!emailResult.ok) {
+    logger.warn("leads.sendQuote", "Angebots-E-Mail konnte nicht gesendet werden", { quoteId });
+  }
 
   revalidatePath(`/dashboard/leads/${quote.lead_id}`);
   revalidatePath("/dashboard/leads");

@@ -8,17 +8,18 @@ export function Hero() {
         <div className="animate-fade-up">
           <p className="eyebrow">Für lokale Dienstleister</p>
           <h1 className="mt-4 font-display text-4xl font-semibold leading-[1.08] tracking-tight text-ink-950 sm:text-5xl lg:text-[3.4rem]">
-            Keine Anfrage mehr verlieren.
+            Keine Kundenanfrage mehr verlieren.
           </h1>
           <p className="mt-5 max-w-lg text-lg leading-relaxed text-ink-600">
-            AnfragePilot sammelt Kundenanfragen, macht sie übersichtlich und
-            hilft dir, schneller darauf zu antworten.
+            AnfragePilot sammelt Anfragen, hilft dir schneller zu antworten,
+            erstellt Angebote, holt dir die Zusage deiner Kunden – und lässt sie
+            direkt einen Termin buchen.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <ButtonLink href="/register" size="lg">
-              Kostenlos testen
+              Kostenlos starten
             </ButtonLink>
-            <ButtonLink href="/glanzwerk-autopflege" variant="outline" size="lg">
+            <ButtonLink href="/demo" variant="outline" size="lg">
               Demo ansehen
             </ButtonLink>
           </div>

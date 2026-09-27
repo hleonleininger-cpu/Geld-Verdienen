@@ -43,7 +43,7 @@ export async function MarketingNavbar() {
                 Login
               </ButtonLink>
               <ButtonLink href="/register" size="sm">
-                Kostenlos testen
+                Kostenlos starten
               </ButtonLink>
             </>
           )}

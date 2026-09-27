@@ -2,7 +2,7 @@ const rows = [
   { name: "Max Mustermann", service: "Autopflege", status: "Neu", color: "bg-brand-100 text-brand-700" },
   { name: "Julia Weber", service: "Lackversiegelung", status: "In Bearbeitung", color: "bg-amber-100 text-amber-700" },
   { name: "Familie Schneider", service: "Umzugsreinigung", status: "Angebot gesendet", color: "bg-sky-100 text-sky-700" },
-  { name: "Sarah & Tom", service: "Hochzeitsfotografie", status: "Gewonnen", color: "bg-brand-600 text-white" },
+  { name: "Sarah & Tom", service: "Hochzeitsfotografie", status: "Termin gebucht", color: "bg-violet-100 text-violet-700" },
 ];
 
 export function DashboardPreview() {
@@ -22,12 +22,13 @@ export function DashboardPreview() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           { label: "Neue Anfragen", value: "3" },
-          { label: "Offen", value: "5" },
-          { label: "Antworten ausstehend", value: "2" },
-          { label: "Ø Anfragewert", value: "180 €" },
+          { label: "Offene Angebote", value: "2" },
+          { label: "Anstehende Termine", value: "1" },
+          { label: "Gewonnen", value: "5" },
+          { label: "Umsatz", value: "740 €" },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl border border-ink-100 bg-sand-50 p-3">
             <p className="text-[11px] leading-tight text-ink-500">{stat.label}</p>

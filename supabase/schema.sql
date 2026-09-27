@@ -116,6 +116,18 @@ create table if not exists public.businesses (
   referral_code text not null unique
     default lower(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)),
   referred_by_code text,
+  -- Demo-Isolation (Conversion-Funnel-Phase): eine als Demo markierte
+  -- Business-Zeile wird aus Admin-Wachstumszahlen und Lead-Kontingenten
+  -- ausgeschlossen (siehe app/admin/page.tsx, app/actions/leads.ts) und
+  -- nie mit echten Mandanten vermischt.
+  is_demo boolean not null default false,
+  -- Terminbuchung (Conversion-Funnel-Phase): nur wirksam, wenn der
+  -- effektive Plan das "calendar"-Feature freischaltet (siehe
+  -- lib/entitlements.ts + business_has_calendar_feature() unten).
+  appointment_duration_minutes int not null default 60
+    check (appointment_duration_minutes > 0 and appointment_duration_minutes <= 480),
+  appointment_buffer_minutes int not null default 0
+    check (appointment_buffer_minutes >= 0 and appointment_buffer_minutes <= 240),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -244,6 +256,13 @@ create table if not exists public.leads (
   assignee_id uuid references auth.users (id) on delete set null,
   attachment_url text,
   reminder_at timestamptz,
+  -- Formular-Builder (Conversion-Funnel-Phase): `form_id` verweist auf das
+  -- individuelle Formular, ueber das die Anfrage einging (null = altes,
+  -- fest eingebautes Standardformular auf /[businessSlug]). Die
+  -- FK-Constraint auf request_forms wird weiter unten ergaenzt, da diese
+  -- Tabelle erst spaeter in diesem Skript definiert wird.
+  form_id uuid,
+  custom_answers jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -566,7 +585,15 @@ begin
     'business_name', b.business_name,
     'business_phone', b.phone,
     'business_email', b.email,
-    'business_logo_url', b.logo_url
+    'business_logo_url', b.logo_url,
+    'calendar_enabled', public.business_has_calendar_feature(b.id),
+    'appointment', (
+      select jsonb_build_object('id', a.id, 'scheduled_at', a.scheduled_at, 'status', a.status)
+      from public.appointments a
+      where a.lead_id = l.id
+      order by a.created_at desc
+      limit 1
+    )
   ) into v_result
   from public.quotes q
   join public.leads l on l.id = q.lead_id
@@ -885,10 +912,11 @@ create policy "analytics_events_insert_public"
   to anon, authenticated
   with check (
     event_name in (
-      'signup', 'onboarding_started', 'onboarding_completed',
-      'business_page_published', 'lead_created', 'quote_created',
-      'quote_sent', 'quote_viewed', 'quote_accepted', 'appointment_created',
-      'lead_won', 'trial_started', 'checkout_started', 'subscription_started'
+      'landing_view', 'signup', 'onboarding_started', 'onboarding_completed',
+      'business_page_published', 'first_form_published', 'lead_created',
+      'first_lead', 'quote_created', 'first_quote', 'quote_sent',
+      'quote_viewed', 'quote_accepted', 'appointment_booked', 'lead_won',
+      'trial_started', 'checkout_started', 'subscription_started'
     )
   );
 
@@ -916,6 +944,520 @@ $$;
 
 revoke all on function public.admin_funnel_counts(timestamptz) from public;
 grant execute on function public.admin_funnel_counts(timestamptz) to service_role;
+
+-- =====================================================================
+-- request_forms + request_form_fields (Custom Request Form Builder)
+-- =====================================================================
+-- Ein Business kann beliebig viele eigene Anfrageformulare anlegen,
+-- erreichbar unter /request/[businessSlug]/[formSlug]. Das alte, fest
+-- eingebaute Formular auf /[businessSlug] bleibt komplett unveraendert
+-- bestehen (kein `is_default`-Sonderfall noetig, da beide Wege unabhaengig
+-- nebeneinander existieren).
+create table if not exists public.request_forms (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses (id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 120),
+  slug text not null check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  description text check (char_length(description) <= 1000),
+  active boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (business_id, slug)
+);
+
+create index if not exists request_forms_business_id_idx on public.request_forms (business_id);
+
+alter table public.request_forms enable row level security;
+
+create policy "request_forms_select_own"
+  on public.request_forms for select
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+-- Oeffentlich lesbar (nur aktive Formulare veroeffentlichter Businesses),
+-- fuer die oeffentliche Formularseite /request/[businessSlug]/[formSlug].
+-- Ohne die business_id-Einschraenkung waere ueber den anon-Key jedes aktive
+-- Formular jedes Tenants auflistbar, auch von Businesses, die ihre Seite
+-- noch gar nicht veroeffentlicht haben.
+create policy "request_forms_select_public"
+  on public.request_forms for select
+  to anon, authenticated
+  using (
+    active = true
+    and business_id in (select id from public.businesses where published = true)
+  );
+
+create policy "request_forms_insert_own"
+  on public.request_forms for insert
+  with check (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+create policy "request_forms_update_own"
+  on public.request_forms for update
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()))
+  with check (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+create policy "request_forms_delete_own"
+  on public.request_forms for delete
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+drop trigger if exists set_request_forms_updated_at on public.request_forms;
+create trigger set_request_forms_updated_at
+  before update on public.request_forms
+  for each row execute procedure public.set_updated_at();
+
+-- Jetzt, da request_forms existiert, die vorbereitete FK-Spalte auf
+-- leads.form_id nachtraeglich mit einer echten Constraint versehen.
+alter table public.leads
+  add constraint leads_form_id_fkey
+  foreign key (form_id) references public.request_forms (id) on delete set null;
+
+create table if not exists public.request_form_fields (
+  id uuid primary key default gen_random_uuid(),
+  form_id uuid not null references public.request_forms (id) on delete cascade,
+  field_type text not null check (field_type in (
+    'text', 'textarea', 'email', 'phone', 'number', 'date',
+    'select', 'multiselect', 'checkbox', 'file'
+  )),
+  label text not null check (char_length(label) between 1 and 200),
+  description text check (char_length(description) <= 500),
+  required boolean not null default false,
+  position int not null default 0,
+  -- Auswahloptionen fuer select/multiselect, z. B. ["Klein", "Mittel", "Gross"].
+  options jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists request_form_fields_form_id_idx
+  on public.request_form_fields (form_id, position);
+
+alter table public.request_form_fields enable row level security;
+
+create policy "request_form_fields_select_own"
+  on public.request_form_fields for select
+  using (
+    form_id in (
+      select id from public.request_forms
+      where business_id in (select id from public.businesses where owner_id = auth.uid())
+    )
+  );
+
+create policy "request_form_fields_select_public"
+  on public.request_form_fields for select
+  to anon, authenticated
+  using (
+    form_id in (
+      select rf.id from public.request_forms rf
+      join public.businesses b on b.id = rf.business_id
+      where rf.active = true and b.published = true
+    )
+  );
+
+create policy "request_form_fields_insert_own"
+  on public.request_form_fields for insert
+  with check (
+    form_id in (
+      select id from public.request_forms
+      where business_id in (select id from public.businesses where owner_id = auth.uid())
+    )
+  );
+
+create policy "request_form_fields_update_own"
+  on public.request_form_fields for update
+  using (
+    form_id in (
+      select id from public.request_forms
+      where business_id in (select id from public.businesses where owner_id = auth.uid())
+    )
+  )
+  with check (
+    form_id in (
+      select id from public.request_forms
+      where business_id in (select id from public.businesses where owner_id = auth.uid())
+    )
+  );
+
+create policy "request_form_fields_delete_own"
+  on public.request_form_fields for delete
+  using (
+    form_id in (
+      select id from public.request_forms
+      where business_id in (select id from public.businesses where owner_id = auth.uid())
+    )
+  );
+
+drop trigger if exists set_request_form_fields_updated_at on public.request_form_fields;
+create trigger set_request_form_fields_updated_at
+  before update on public.request_form_fields
+  for each row execute procedure public.set_updated_at();
+
+-- =====================================================================
+-- Terminbuchung (Appointments): blocked_times + appointments
+-- =====================================================================
+-- Verfuegbare Zeitfenster werden aus `businesses.opening_hours` (bereits
+-- vorhanden, Phase 3) + `appointment_duration_minutes` +
+-- `appointment_buffer_minutes` berechnet – keine zusaetzliche
+-- "Arbeitszeiten"-Tabelle noetig, Oeffnungszeiten UND Terminverfuegbarkeit
+-- sind dasselbe Konzept fuer ein Dienstleistungsunternehmen.
+create table if not exists public.blocked_times (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses (id) on delete cascade,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null check (ends_at > starts_at),
+  reason text check (char_length(reason) <= 200),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists blocked_times_business_idx
+  on public.blocked_times (business_id, starts_at);
+
+alter table public.blocked_times enable row level security;
+
+create policy "blocked_times_select_own"
+  on public.blocked_times for select
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+create policy "blocked_times_insert_own"
+  on public.blocked_times for insert
+  with check (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+create policy "blocked_times_delete_own"
+  on public.blocked_times for delete
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+-- Fuer die "kein Doppel-Termin"-Exclusion-Constraint unten (kombiniert
+-- Gleichheit auf business_id mit einem Bereichs-Overlap auf time_range in
+-- einem einzigen GiST-Index).
+create extension if not exists btree_gist;
+
+create table if not exists public.appointments (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses (id) on delete cascade,
+  lead_id uuid not null references public.leads (id) on delete cascade,
+  quote_id uuid references public.quotes (id) on delete set null,
+  scheduled_at timestamptz not null,
+  duration_minutes int not null check (duration_minutes > 0 and duration_minutes <= 480),
+  status text not null default 'scheduled'
+    check (status in ('scheduled', 'confirmed', 'completed', 'cancelled', 'no_show')),
+  notes text check (char_length(notes) <= 2000),
+  public_token uuid not null default gen_random_uuid() unique,
+  -- Generierte Spalte statt Berechnung in jeder Query: der GiST-Index fuer
+  -- die Exclusion-Constraint braucht eine indexierbare Range-Spalte.
+  time_range tstzrange generated always as (
+    tstzrange(scheduled_at, scheduled_at + (duration_minutes || ' minutes')::interval, '[)')
+  ) stored,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists appointments_business_idx
+  on public.appointments (business_id, scheduled_at);
+create index if not exists appointments_lead_idx on public.appointments (lead_id);
+
+-- Harte, DB-seitige Doppelbuchungs-Sperre: fuer dasselbe Business koennen
+-- sich zwei AKTIVE (scheduled/confirmed) Termine nie zeitlich ueberlappen
+-- – unabhaengig davon, ueber welchen Pfad (RPC, Owner-Dashboard, direktes
+-- SQL) der Insert erfolgt. Das ist die eigentliche "Prevent double
+-- booking"-Garantie, nicht nur eine Anwendungsebene-Pruefung davor.
+alter table public.appointments
+  add constraint appointments_no_overlap
+  exclude using gist (business_id with =, time_range with &&)
+  where (status in ('scheduled', 'confirmed'));
+
+alter table public.appointments enable row level security;
+
+create policy "appointments_select_own"
+  on public.appointments for select
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+create policy "appointments_update_own"
+  on public.appointments for update
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()))
+  with check (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+create policy "appointments_delete_own"
+  on public.appointments for delete
+  using (business_id in (select id from public.businesses where owner_id = auth.uid()));
+
+-- Bewusst KEINE anon/authenticated INSERT-Policy: jede Buchung laeuft
+-- ausschliesslich ueber die SECURITY DEFINER RPC `book_appointment` unten,
+-- identifiziert per Quote-`public_token` (gleiches Muster wie
+-- `record_public_quote_event`).
+
+drop trigger if exists set_appointments_updated_at on public.appointments;
+create trigger set_appointments_updated_at
+  before update on public.appointments
+  for each row execute procedure public.set_updated_at();
+
+-- ---------------------------------------------------------------------
+-- Server-seitige Plan-Pruefung fuer das Terminbuchungs-Feature
+-- ---------------------------------------------------------------------
+-- Spiegelt lib/entitlements.ts (PLAN_FEATURES.calendar, TRIAL_PLAN='pro',
+-- getEffectivePlanInfo) in SQL, damit die beiden unten stehenden
+-- oeffentlichen RPCs "Termine buchen" NIEMALS allein anhand von
+-- Client-/UI-Zustand freischalten – ausschliesslich anhand des in der DB
+-- gespeicherten, webhook-geschriebenen Plan-/Abo-Zustands ("Never
+-- activate paid features solely based on checkout success in the
+-- browser"). Bei Aenderungen an den Plan-Regeln MUSS diese Funktion mit
+-- lib/entitlements.ts synchron gehalten werden.
+create or replace function public.business_has_calendar_feature(p_business_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_plan text;
+  v_subscription_status text;
+  v_trial_ends_at timestamptz;
+  v_effective_plan text;
+begin
+  select plan, subscription_status, trial_ends_at
+    into v_plan, v_subscription_status, v_trial_ends_at
+  from public.businesses
+  where id = p_business_id;
+
+  if not found then
+    return false;
+  end if;
+
+  if v_subscription_status = 'active' then
+    v_effective_plan := v_plan;
+  elsif v_subscription_status = 'trialing'
+        and v_trial_ends_at is not null
+        and v_trial_ends_at > now() then
+    v_effective_plan := 'pro';
+  else
+    v_effective_plan := 'free';
+  end if;
+
+  return v_effective_plan in ('pro', 'business');
+end;
+$$;
+
+-- ---------------------------------------------------------------------
+-- Oeffentliche Terminbuchungs-RPCs (identifiziert per Quote-public_token)
+-- ---------------------------------------------------------------------
+-- Ein Kunde darf einen Termin erst NACH Annahme eines Angebots buchen.
+-- Beide Funktionen lesen/schreiben `blocked_times`/`appointments` trotz
+-- fehlender anon-Policies (SECURITY DEFINER), exakt wie
+-- `get_public_quote`/`record_public_quote_event` weiter oben.
+create or replace function public.get_available_appointment_slots(
+  p_public_token uuid,
+  p_date date
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  v_quote_status text;
+  v_business_id uuid;
+  v_business record;
+  v_day_key text;
+  v_day_hours record;
+  v_duration interval;
+  v_buffer interval;
+  v_day_start timestamptz;
+  v_day_end timestamptz;
+  v_slot_start timestamptz;
+  v_slot_end timestamptz;
+  v_slots jsonb := '[]'::jsonb;
+begin
+  select q.status, l.business_id
+    into v_quote_status, v_business_id
+  from public.quotes q
+  join public.leads l on l.id = q.lead_id
+  where q.public_token = p_public_token;
+
+  if not found or v_quote_status <> 'accepted' then
+    return '[]'::jsonb;
+  end if;
+
+  if not public.business_has_calendar_feature(v_business_id) then
+    return '[]'::jsonb;
+  end if;
+
+  select * into v_business from public.businesses where id = v_business_id;
+
+  v_duration := (v_business.appointment_duration_minutes || ' minutes')::interval;
+  v_buffer := (v_business.appointment_buffer_minutes || ' minutes')::interval;
+
+  v_day_key := (array['sun','mon','tue','wed','thu','fri','sat'])[extract(dow from p_date)::int + 1];
+
+  select * into v_day_hours
+  from jsonb_to_recordset(v_business.opening_hours) as x(day text, open text, close text, closed boolean)
+  where x.day = v_day_key;
+
+  if not found or v_day_hours.closed then
+    return '[]'::jsonb;
+  end if;
+
+  v_day_start := (p_date::text || ' ' || v_day_hours.open)::timestamptz;
+  v_day_end := (p_date::text || ' ' || v_day_hours.close)::timestamptz;
+
+  if v_day_start < now() then
+    v_day_start := now();
+  end if;
+
+  v_slot_start := v_day_start;
+  while v_slot_start + v_duration <= v_day_end loop
+    v_slot_end := v_slot_start + v_duration;
+
+    if not exists (
+      select 1 from public.blocked_times bt
+      where bt.business_id = v_business_id
+        and bt.starts_at < v_slot_end + v_buffer
+        and bt.ends_at > v_slot_start - v_buffer
+    ) and not exists (
+      select 1 from public.appointments a
+      where a.business_id = v_business_id
+        and a.status in ('scheduled', 'confirmed')
+        and a.scheduled_at < v_slot_end + v_buffer
+        and (a.scheduled_at + (a.duration_minutes || ' minutes')::interval) > v_slot_start - v_buffer
+    ) then
+      v_slots := v_slots || jsonb_build_array(to_jsonb(v_slot_start));
+    end if;
+
+    v_slot_start := v_slot_start + v_duration;
+  end loop;
+
+  return v_slots;
+end;
+$$;
+
+grant execute on function public.get_available_appointment_slots(uuid, date) to anon, authenticated;
+
+create or replace function public.book_appointment(
+  p_public_token uuid,
+  p_starts_at timestamptz
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_quote_id uuid;
+  v_quote_status text;
+  v_lead_id uuid;
+  v_business_id uuid;
+  v_duration_minutes int;
+  v_buffer_minutes int;
+  v_opening_hours jsonb;
+  v_day_key text;
+  v_day_hours record;
+  v_day_start timestamptz;
+  v_day_end timestamptz;
+  v_duration interval;
+  v_buffer interval;
+  v_appointment_id uuid;
+begin
+  select q.id, q.status, l.id, l.business_id
+    into v_quote_id, v_quote_status, v_lead_id, v_business_id
+  from public.quotes q
+  join public.leads l on l.id = q.lead_id
+  where q.public_token = p_public_token;
+
+  if not found then
+    raise exception 'not_found';
+  end if;
+  if v_quote_status <> 'accepted' then
+    raise exception 'quote_not_accepted';
+  end if;
+  if not public.business_has_calendar_feature(v_business_id) then
+    raise exception 'feature_not_available';
+  end if;
+  if p_starts_at < now() then
+    raise exception 'slot_in_past';
+  end if;
+  if exists (
+    select 1 from public.appointments
+    where lead_id = v_lead_id and status in ('scheduled', 'confirmed')
+  ) then
+    raise exception 'already_booked';
+  end if;
+
+  select appointment_duration_minutes, appointment_buffer_minutes, opening_hours
+    into v_duration_minutes, v_buffer_minutes, v_opening_hours
+  from public.businesses where id = v_business_id;
+  v_duration := (v_duration_minutes || ' minutes')::interval;
+  v_buffer := (v_buffer_minutes || ' minutes')::interval;
+
+  -- Server-seitige Verfuegbarkeitspruefung ("Create appointment only
+  -- after server-side availability check"): der Client sendet nur einen
+  -- Zeitpunkt, niemals eine vom Browser berechnete Verfuegbarkeit. Ohne
+  -- diese Pruefung koennte die RPC direkt (z. B. per anon-Key) mit einem
+  -- beliebigen Zeitpunkt ausserhalb der Oeffnungszeiten oder waehrend
+  -- einer blockierten Zeit aufgerufen werden.
+  v_day_key := (array['sun','mon','tue','wed','thu','fri','sat'])[extract(dow from p_starts_at)::int + 1];
+  select * into v_day_hours
+  from jsonb_to_recordset(v_opening_hours) as x(day text, open text, close text, closed boolean)
+  where x.day = v_day_key;
+
+  if not found or v_day_hours.closed then
+    raise exception 'outside_business_hours';
+  end if;
+
+  v_day_start := (p_starts_at::date::text || ' ' || v_day_hours.open)::timestamptz;
+  v_day_end := (p_starts_at::date::text || ' ' || v_day_hours.close)::timestamptz;
+  if p_starts_at < v_day_start or (p_starts_at + v_duration) > v_day_end then
+    raise exception 'outside_business_hours';
+  end if;
+
+  if exists (
+    select 1 from public.blocked_times bt
+    where bt.business_id = v_business_id
+      and bt.starts_at < p_starts_at + v_duration + v_buffer
+      and bt.ends_at > p_starts_at - v_buffer
+  ) then
+    raise exception 'slot_unavailable';
+  end if;
+
+  begin
+    insert into public.appointments
+      (business_id, lead_id, quote_id, scheduled_at, duration_minutes, status)
+    values
+      (v_business_id, v_lead_id, v_quote_id, p_starts_at, v_duration_minutes, 'scheduled')
+    returning id into v_appointment_id;
+  exception
+    when exclusion_violation then
+      raise exception 'slot_unavailable';
+  end;
+
+  insert into public.activity_events (business_id, lead_id, quote_id, type, actor)
+    values (v_business_id, v_lead_id, v_quote_id, 'appointment_booked', 'customer');
+  insert into public.notifications (business_id, type, title, body, link)
+    values (
+      v_business_id, 'appointment_booked', 'Termin gebucht',
+      'Ein Kunde hat einen Termin vereinbart.',
+      '/dashboard/leads/' || v_lead_id
+    );
+
+  return jsonb_build_object(
+    'ok', true,
+    'appointment_id', v_appointment_id,
+    'scheduled_at', p_starts_at
+  );
+end;
+$$;
+
+grant execute on function public.book_appointment(uuid, timestamptz) to anon, authenticated;
+
+-- =====================================================================
+-- Webhook-Idempotenz (Stripe)
+-- =====================================================================
+-- Speichert bereits verarbeitete Stripe-Event-IDs. Bewusst KEINE Policies
+-- (auch nicht fuer den Owner) – nur der Service-Role-Client (die
+-- Webhook-Route) greift ueberhaupt darauf zu, RLS ohne Policy blockt
+-- PostgREST fuer alle anderen vollstaendig.
+create table if not exists public.processed_webhook_events (
+  id text primary key,
+  provider text not null default 'stripe',
+  processed_at timestamptz not null default now()
+);
+
+alter table public.processed_webhook_events enable row level security;
 
 -- =====================================================================
 -- Ende Schema

@@ -3,8 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { leadFormSchema } from "@/lib/leadSchema";
 import { getClientIp, hashIp } from "@/lib/rateLimit";
-import { getLeadQuota } from "@/lib/entitlements";
-import { track } from "@/lib/analytics";
+import { ingestLead } from "@/lib/leadIngestion";
 import { logger } from "@/lib/logger";
 
 export type LeadFormState = { error?: string; success?: boolean } | null;
@@ -13,8 +12,6 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8 MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const RATE_LIMIT_ERROR =
   "Zu viele Anfragen von dir in kurzer Zeit. Bitte versuche es in einer Stunde erneut.";
-const QUOTA_ERROR =
-  "Dieses Unternehmen hat sein monatliches Anfragelimit erreicht. Bitte versuche es später erneut oder kontaktiere es direkt.";
 
 export async function submitLead(
   _prev: LeadFormState,
@@ -51,20 +48,12 @@ export async function submitLead(
   // serverseitige Bestätigung dafür).
   const { data: business } = await supabase
     .from("businesses")
-    .select("id, plan, subscription_status, trial_ends_at")
+    .select("id, business_name, email, plan, subscription_status, trial_ends_at, is_demo")
     .eq("id", parsed.data.business_id)
     .maybeSingle();
 
   if (!business) {
     return { error: "Dieses Unternehmen wurde nicht gefunden." };
-  }
-
-  // Harte Plan-Grenze (Phase 12): niemals dem Frontend vertrauen, die
-  // Quote wird serverseitig neu berechnet. Bestehende Daten werden dabei
-  // nie geloescht – nur neue Anfragen werden ab dem Limit abgelehnt.
-  const quota = await getLeadQuota(business);
-  if (!quota.allowed) {
-    return { error: QUOTA_ERROR };
   }
 
   // Rate-Limiting: max. 5 Anfragen pro IP+Business und Stunde (siehe
@@ -114,7 +103,7 @@ export async function submitLead(
     attachmentUrl = path;
   }
 
-  const { error: insertError } = await supabase.from("leads").insert({
+  const result = await ingestLead(business, {
     business_id: parsed.data.business_id,
     customer_name: parsed.data.customer_name,
     customer_email: parsed.data.customer_email,
@@ -125,17 +114,11 @@ export async function submitLead(
     budget: parsed.data.budget || null,
     description: parsed.data.description || null,
     attachment_url: attachmentUrl,
-    status: "new",
   });
 
-  if (insertError) {
-    logger.error("leads.submit", "Insert fehlgeschlagen", insertError, {
-      businessId: business.id,
-    });
-    return { error: "Deine Anfrage konnte nicht gesendet werden. Bitte versuche es erneut." };
+  if (!result.ok) {
+    return { error: result.error };
   }
-
-  await track("lead_created", { businessId: business.id });
 
   return { success: true };
 }

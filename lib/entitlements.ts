@@ -8,12 +8,14 @@ import type { BusinessPlan, BusinessRow } from "@/types/database";
  *
  * Ehrlichkeits-Hinweis (siehe docs/MONETIZATION.md fuer Details): Nicht
  * jedes Feature-Flag hier hat bereits eine zugehoerige, echte Funktion.
- * `max_team_members`, `custom_forms` und `calendar` sind fuer Features
- * vorbereitet, die in diesem Umfang NICHT gebaut wurden (kein Team-/Rollen-
- * Modell, kein Formular-Builder, kein Kalender) – sie tauchen hier auf,
- * damit die Struktur schon steht, gaten aber aktuell nichts Reales.
+ * `max_team_members` ist fuer ein Feature vorbereitet, das in diesem
+ * Umfang NICHT gebaut wurde (kein Team-/Rollen-Modell) – es taucht hier
+ * auf, damit die Struktur schon steht, gatet aber aktuell nichts Reales.
  * Tatsaechlich durchgesetzt werden: `max_leads_per_month`,
- * `custom_branding` und `advanced_analytics`.
+ * `custom_branding`, `advanced_analytics`, `custom_forms` (siehe
+ * app/dashboard/forms/actions.ts::createForm) und `calendar` (siehe
+ * business_has_calendar_feature() in supabase/schema.sql, geprueft von
+ * den Terminbuchungs-RPCs).
  */
 export interface PlanFeatures {
   max_leads_per_month: number | null; // null = unbegrenzt

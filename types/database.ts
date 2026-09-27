@@ -11,6 +11,20 @@ export type LeadPriority = "low" | "medium" | "high";
 
 export type QuoteStatus = "draft" | "sent" | "viewed" | "accepted" | "declined" | "expired";
 
+export type AppointmentStatus = "scheduled" | "confirmed" | "completed" | "cancelled" | "no_show";
+
+export type RequestFieldType =
+  | "text"
+  | "textarea"
+  | "email"
+  | "phone"
+  | "number"
+  | "date"
+  | "select"
+  | "multiselect"
+  | "checkbox"
+  | "file";
+
 export type BusinessPlan = "free" | "starter" | "pro" | "business";
 
 export type SubscriptionStatus = "none" | "trialing" | "active" | "past_due" | "canceled";
@@ -75,6 +89,9 @@ export type BusinessRow = {
   stripe_subscription_id: string | null;
   referral_code: string;
   referred_by_code: string | null;
+  is_demo: boolean;
+  appointment_duration_minutes: number;
+  appointment_buffer_minutes: number;
   created_at: string;
   updated_at: string;
 };
@@ -108,8 +125,63 @@ export type LeadRow = {
   assignee_id: string | null;
   attachment_url: string | null;
   reminder_at: string | null;
+  form_id: string | null;
+  custom_answers: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+export type RequestFormRow = {
+  id: string;
+  business_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RequestFormFieldRow = {
+  id: string;
+  form_id: string;
+  field_type: RequestFieldType;
+  label: string;
+  description: string | null;
+  required: boolean;
+  position: number;
+  options: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type BlockedTimeRow = {
+  id: string;
+  business_id: string;
+  starts_at: string;
+  ends_at: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type AppointmentRow = {
+  id: string;
+  business_id: string;
+  lead_id: string;
+  quote_id: string | null;
+  scheduled_at: string;
+  duration_minutes: number;
+  status: AppointmentStatus;
+  notes: string | null;
+  public_token: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProcessedWebhookEventRow = {
+  id: string;
+  provider: string;
+  processed_at: string;
 };
 
 export type QuoteRow = {
@@ -202,6 +274,8 @@ export type PublicQuotePayload = {
   business_phone: string | null;
   business_email: string | null;
   business_logo_url: string | null;
+  calendar_enabled: boolean;
+  appointment: { id: string; scheduled_at: string; status: AppointmentStatus } | null;
 };
 
 export type Database = {
@@ -275,6 +349,49 @@ export type Database = {
         Update: Partial<AnalyticsEventRow>;
         Relationships: [];
       };
+      request_forms: {
+        Row: RequestFormRow;
+        Insert: Partial<RequestFormRow> & { business_id: string; name: string; slug: string };
+        Update: Partial<RequestFormRow>;
+        Relationships: [];
+      };
+      request_form_fields: {
+        Row: RequestFormFieldRow;
+        Insert: Partial<RequestFormFieldRow> & {
+          form_id: string;
+          field_type: RequestFieldType;
+          label: string;
+        };
+        Update: Partial<RequestFormFieldRow>;
+        Relationships: [];
+      };
+      blocked_times: {
+        Row: BlockedTimeRow;
+        Insert: Partial<BlockedTimeRow> & {
+          business_id: string;
+          starts_at: string;
+          ends_at: string;
+        };
+        Update: Partial<BlockedTimeRow>;
+        Relationships: [];
+      };
+      appointments: {
+        Row: AppointmentRow;
+        Insert: Partial<AppointmentRow> & {
+          business_id: string;
+          lead_id: string;
+          scheduled_at: string;
+          duration_minutes: number;
+        };
+        Update: Partial<AppointmentRow>;
+        Relationships: [];
+      };
+      processed_webhook_events: {
+        Row: ProcessedWebhookEventRow;
+        Insert: Partial<ProcessedWebhookEventRow> & { id: string };
+        Update: Partial<ProcessedWebhookEventRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -298,6 +415,18 @@ export type Database = {
       admin_funnel_counts: {
         Args: { p_since?: string | null };
         Returns: Record<string, number>;
+      };
+      business_has_calendar_feature: {
+        Args: { p_business_id: string };
+        Returns: boolean;
+      };
+      get_available_appointment_slots: {
+        Args: { p_public_token: string; p_date: string };
+        Returns: string[];
+      };
+      book_appointment: {
+        Args: { p_public_token: string; p_starts_at: string };
+        Returns: { ok: boolean; appointment_id: string; scheduled_at: string };
       };
     };
     Enums: Record<string, never>;

@@ -6,8 +6,15 @@ import { ActivationChecklistCard } from "@/components/dashboard/ActivationCheckl
 import { TrialBanner } from "@/components/dashboard/TrialBanner";
 import { UsageMeter } from "@/components/dashboard/UsageMeter";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
+import { FunnelWidget } from "@/components/dashboard/FunnelWidget";
 import { getCurrentBusiness } from "@/lib/data/business";
-import { getLeadsPage, getDashboardStats, getUpcomingReminders } from "@/lib/data/leads";
+import {
+  getLeadsPage,
+  getDashboardStats,
+  getUpcomingReminders,
+  getRevenueStats,
+} from "@/lib/data/leads";
+import { getUpcomingAppointmentCount } from "@/lib/data/appointments";
 import { getActivationChecklist } from "@/lib/activation";
 import { getEffectivePlanInfo, getLeadQuota } from "@/lib/entitlements";
 import { formatCurrencyEUR, formatDateTimeDe, STATUS_LABELS, STATUS_ORDER } from "@/lib/format";
@@ -25,8 +32,10 @@ export default async function DashboardPage({
   const activeStatus = status as LeadStatus | undefined;
   const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10) || 1);
 
-  const [stats, leadsPage, reminders] = await Promise.all([
+  const [stats, revenueStats, upcomingAppointments, leadsPage, reminders] = await Promise.all([
     getDashboardStats(business.id),
+    getRevenueStats(business.id),
+    getUpcomingAppointmentCount(business.id),
     getLeadsPage(business.id, { status: activeStatus, page }),
     getUpcomingReminders(business.id, 5),
   ]);
@@ -64,11 +73,28 @@ export default async function DashboardPage({
 
       <TrialBanner planInfo={planInfo} />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard label="Neue Anfragen" value={stats.newCount} />
-        <StatCard label="Offene Anfragen" value={stats.openCount} />
-        <StatCard label="Antworten ausstehend" value={stats.pendingReplyCount} />
-        <StatCard label="Geschätzter Anfragewert" value={formatCurrencyEUR(stats.estimatedValue)} />
+        <StatCard label="Offene Angebote" value={revenueStats.openQuotesCount} />
+        <StatCard label="Anstehende Termine" value={upcomingAppointments} />
+        <StatCard label="Gewonnene Aufträge" value={stats.statusCounts.won} />
+        <StatCard
+          label="Geschätzter Umsatz"
+          value={formatCurrencyEUR(revenueStats.estimatedRevenueEUR)}
+          hint="Summe angenommener Angebote"
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FunnelWidget
+          stages={[
+            { label: "Anfragen", value: stats.totalCount },
+            { label: "Angebote", value: revenueStats.totalQuotesCount },
+            { label: "Angenommen", value: revenueStats.acceptedQuotesCount },
+            { label: "Gewonnen", value: stats.statusCounts.won },
+          ]}
+        />
+        <StatCard label="Geschätzter Anfragewert" value={formatCurrencyEUR(stats.estimatedValue)} hint="Offene Anfragen nach Budgetangabe" />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

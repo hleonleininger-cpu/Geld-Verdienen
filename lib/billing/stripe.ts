@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import type {
   BillingWebhookEvent,
   CheckoutSessionParams,
@@ -79,7 +80,20 @@ export class StripeProvider implements PaymentProvider {
       ? `?${new URLSearchParams(body).toString()}`
       : "";
 
-    const response = await fetch(`${STRIPE_API}${path}${query}`, init);
+    // Netzwerkfehler/Timeout duerfen niemals als unbehandelte Exception bis
+    // in die aufrufende Server Action durchschlagen ("safe fallback" statt
+    // Crash) – ALLE oeffentlichen Methoden dieser Klasse laufen ueber diese
+    // eine Stelle, der Fix gilt also fuer Checkout/Portal/Cancel/etc. gleichermassen.
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(`${STRIPE_API}${path}${query}`, init);
+    } catch (error) {
+      logger.error("billing.stripe", "Anfrage an Stripe fehlgeschlagen (Netzwerk/Timeout)", error, {
+        path,
+      });
+      return { ok: false, json: { error: { message: "Stripe ist gerade nicht erreichbar." } } };
+    }
+
     const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     return { ok: response.ok, json };
   }
@@ -181,13 +195,14 @@ export class StripeProvider implements PaymentProvider {
       return null;
     }
 
-    let payload: { type?: string; data?: { object?: Record<string, unknown> } };
+    let payload: { id?: string; type?: string; data?: { object?: Record<string, unknown> } };
     try {
       payload = JSON.parse(rawBody);
     } catch {
       return null;
     }
 
+    const eventId = typeof payload.id === "string" ? payload.id : null;
     const type = payload.type ?? "";
     const object = payload.data?.object ?? {};
 
@@ -197,6 +212,7 @@ export class StripeProvider implements PaymentProvider {
           ? object.client_reference_id
           : (object.metadata as Record<string, string> | undefined)?.business_id ?? null;
       return {
+        id: eventId,
         type: "checkout_completed",
         businessId,
         customerId: typeof object.customer === "string" ? object.customer : null,
@@ -210,6 +226,7 @@ export class StripeProvider implements PaymentProvider {
       const snapshot = this.snapshotFromSubscription(object);
       const metadata = object.metadata as Record<string, string> | undefined;
       return {
+        id: eventId,
         type: "subscription_updated",
         businessId: metadata?.business_id ?? null,
         customerId: snapshot.customerId || null,
@@ -222,6 +239,7 @@ export class StripeProvider implements PaymentProvider {
     if (type === "customer.subscription.deleted") {
       const metadata = object.metadata as Record<string, string> | undefined;
       return {
+        id: eventId,
         type: "subscription_deleted",
         businessId: metadata?.business_id ?? null,
         customerId: typeof object.customer === "string" ? object.customer : null,
@@ -232,6 +250,7 @@ export class StripeProvider implements PaymentProvider {
     }
 
     return {
+      id: eventId,
       type: "unhandled",
       businessId: null,
       customerId: null,

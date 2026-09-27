@@ -62,6 +62,31 @@ Checkout gesetzt), mit Fallback auf `stripe_customer_id`, falls eine
 Subscription ausnahmsweise ohne Metadaten ankommt (z. B. manuell in
 Stripe angelegt).
 
+## Webhook-Idempotenz
+
+Stripe liefert Events "at least once" – dieselbe Event-ID kann mehrfach
+(auch gleichzeitig) zugestellt werden. Bevor die Route irgendetwas
+verarbeitet, reserviert sie die Event-ID per Insert in
+`processed_webhook_events` (PRIMARY KEY). Schlägt der Insert wegen eines
+Duplikats fehl (`23505`/unique_violation), wird die Zustellung
+übersprungen (`{ received: true, duplicate: true }`), bevor z. B.
+`track("subscription_started")` ein zweites Mal ausgelöst wird. Getestet
+in [`supabase/tests/database/08_webhook_idempotency.test.sql`](../supabase/tests/database/08_webhook_idempotency.test.sql)
+(erneuter Insert derselben ID schlägt fehl; kein anon-/authenticated-Zugriff
+auf diese Tabelle).
+
+## Abo kündigen
+
+`/dashboard/billing` zeigt neben "Abo verwalten" (Stripe Customer Portal)
+auch eine explizite "Abo kündigen"-Aktion mit Bestätigungsschritt
+([`components/dashboard/billing/CancelSubscriptionButton.tsx`](../components/dashboard/billing/CancelSubscriptionButton.tsx)
+→ `cancelSubscription()` in
+[`app/dashboard/billing/actions.ts`](../app/dashboard/billing/actions.ts)).
+Die Aktion ruft nur `DELETE /v1/subscriptions/{id}` bei Stripe auf (**sofortige**
+Kündigung, keine Kulanz bis zum Periodenende) – der eigentliche
+`subscription_status`-Wechsel in der DB passiert weiterhin ausschließlich
+über den Webhook, nie direkt durch diese Server Action.
+
 ## Environment-Variablen
 
 Alle optional – ohne sie läuft die App normal, `isConfigured()` liefert

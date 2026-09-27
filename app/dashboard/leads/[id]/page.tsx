@@ -4,6 +4,7 @@ import { ArrowLeft, Paperclip } from "lucide-react";
 import { getCurrentBusiness } from "@/lib/data/business";
 import { getLeadById, getQuotesForLead } from "@/lib/data/leads";
 import { getActivityForLead } from "@/lib/data/activity";
+import { getAppointmentForLead } from "@/lib/data/appointments";
 import { createClient } from "@/lib/supabase/server";
 import { ActivityTimeline } from "@/components/dashboard/ActivityTimeline";
 import { Badge } from "@/components/ui/Card";
@@ -12,6 +13,8 @@ import {
   formatDateTimeDe,
   STATUS_BADGE_CLASSES,
   STATUS_LABELS,
+  APPOINTMENT_STATUS_BADGE_CLASSES,
+  APPOINTMENT_STATUS_LABELS,
 } from "@/lib/format";
 import { getIndustry } from "@/lib/industries";
 import { StatusActions } from "@/components/dashboard/leads/StatusActions";
@@ -31,9 +34,10 @@ export default async function LeadDetailPage({
   if (!business) return null;
   if (!lead || lead.business_id !== business.id) notFound();
 
-  const [quotes, activity] = await Promise.all([
+  const [quotes, activity, appointment] = await Promise.all([
     getQuotesForLead(lead.id),
     getActivityForLead(lead.id),
+    getAppointmentForLead(lead.id),
   ]);
   const industry = getIndustry(business.industry);
 
@@ -128,6 +132,26 @@ export default async function LeadDetailPage({
             </div>
           </div>
 
+          {appointment && (
+            <div className="card-surface p-6">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="font-display text-lg font-semibold text-ink-950">Termin</h2>
+                <Badge className={APPOINTMENT_STATUS_BADGE_CLASSES[appointment.status]}>
+                  {APPOINTMENT_STATUS_LABELS[appointment.status]}
+                </Badge>
+              </div>
+              <p className="mt-3 text-sm text-ink-900">
+                {formatDateTimeDe(appointment.scheduled_at)} Uhr
+              </p>
+              <Link
+                href="/dashboard/appointments"
+                className="mt-2 inline-block text-sm font-medium text-brand-700 hover:underline"
+              >
+                Termine verwalten →
+              </Link>
+            </div>
+          )}
+
           <div className="card-surface p-6">
             <h2 className="font-display text-lg font-semibold text-ink-950">Aktivität</h2>
             <div className="mt-4">
@@ -149,6 +173,7 @@ export default async function LeadDetailPage({
             leadId={lead.id}
             defaultTitle={industry.quoteSuggestion.title}
             defaultPrice={industry.quoteSuggestion.price}
+            defaultLineItems={industry.quoteSuggestion.lineItems}
           />
         </div>
       </div>

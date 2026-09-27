@@ -20,15 +20,20 @@ const RANGE_OPTIONS = [
 type RangeKey = (typeof RANGE_OPTIONS)[number]["key"];
 
 const FUNNEL_STEPS: { event: AnalyticsEventName; label: string }[] = [
+  { event: "landing_view", label: "Landingpage-Aufrufe" },
   { event: "signup", label: "Registrierungen" },
   { event: "onboarding_started", label: "Onboarding gestartet" },
   { event: "onboarding_completed", label: "Onboarding abgeschlossen" },
   { event: "business_page_published", label: "Seite veröffentlicht" },
-  { event: "lead_created", label: "Erste Anfrage erhalten" },
-  { event: "quote_created", label: "Angebot erstellt" },
+  { event: "first_form_published", label: "Erstes Formular veröffentlicht" },
+  { event: "first_lead", label: "Erste Anfrage erhalten" },
+  { event: "first_quote", label: "Erstes Angebot erstellt" },
   { event: "quote_sent", label: "Angebot versendet" },
+  { event: "quote_viewed", label: "Angebot angesehen" },
   { event: "quote_accepted", label: "Angebot angenommen" },
+  { event: "appointment_booked", label: "Termin gebucht" },
   { event: "lead_won", label: "Kunde gewonnen" },
+  { event: "trial_started", label: "Testphase gestartet" },
   { event: "checkout_started", label: "Checkout gestartet" },
   { event: "subscription_started", label: "Abo gestartet" },
 ];

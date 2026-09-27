@@ -122,6 +122,83 @@ export const updateServiceSchema = serviceSchema.extend({
   service_id: z.string().uuid("Ungültige Leistungs-ID."),
 });
 
+// Formular-Builder (Custom Request Form Builder)
+export const REQUEST_FIELD_TYPES = [
+  "text",
+  "textarea",
+  "email",
+  "phone",
+  "number",
+  "date",
+  "select",
+  "multiselect",
+  "checkbox",
+  "file",
+] as const;
+
+export const requestFieldTypeSchema = z.enum(REQUEST_FIELD_TYPES);
+
+export const createFormSchema = z.object({
+  name: z.string().trim().min(1, "Bitte gib einen Namen an.").max(120),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+});
+
+export const updateFormSchema = createFormSchema.extend({
+  form_id: z.string().uuid("Ungültige Formular-ID."),
+});
+
+export const formFieldSchema = z
+  .object({
+    field_type: requestFieldTypeSchema,
+    label: z.string().trim().min(1, "Bitte gib ein Label an.").max(200),
+    description: z.string().trim().max(500).optional().or(z.literal("")),
+    required: z.boolean().default(false),
+    options: z.array(z.string().trim().min(1).max(120)).max(30).default([]),
+  })
+  .refine(
+    (data) => !["select", "multiselect"].includes(data.field_type) || data.options.length > 0,
+    { message: "Bitte gib mindestens eine Option an.", path: ["options"] }
+  );
+
+export const updateFormFieldSchema = formFieldSchema.and(
+  z.object({ field_id: z.string().uuid("Ungültige Feld-ID.") })
+);
+
+export const reorderFormFieldsSchema = z.object({
+  form_id: z.string().uuid(),
+  field_ids: z.array(z.string().uuid()).min(1),
+});
+
+// Terminbuchung (Appointments)
+export const appointmentSettingsSchema = z.object({
+  appointment_duration_minutes: z.number().int().min(5).max(480),
+  appointment_buffer_minutes: z.number().int().min(0).max(240),
+});
+
+export const blockedTimeSchema = z
+  .object({
+    starts_at: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Ungültiges Datum."),
+    ends_at: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Ungültiges Datum."),
+    reason: z.string().trim().max(200).optional().or(z.literal("")),
+  })
+  .refine((data) => new Date(data.ends_at).getTime() > new Date(data.starts_at).getTime(), {
+    message: "Das Ende muss nach dem Start liegen.",
+    path: ["ends_at"],
+  });
+
+export const APPOINTMENT_STATUSES = [
+  "scheduled",
+  "confirmed",
+  "completed",
+  "cancelled",
+  "no_show",
+] as const;
+
+export const updateAppointmentStatusSchema = z.object({
+  appointment_id: z.string().uuid("Ungültige Termin-ID."),
+  status: z.enum(APPOINTMENT_STATUSES),
+});
+
 // Onboarding-Schritte (siehe lib/onboarding.ts fuer die Schrittdefinition)
 export const onboardingStep1Schema = z.object({
   business_name: z.string().trim().min(2, "Bitte gib deinen Unternehmensnamen an.").max(120),

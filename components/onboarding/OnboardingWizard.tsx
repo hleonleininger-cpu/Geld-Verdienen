@@ -108,6 +108,7 @@ export function OnboardingWizard({
       )}
       {step === 3 && (
         <Step3
+          industryKey={industry}
           defaultDescription={initialBusiness?.description ?? ""}
           defaultTagline={initialBusiness?.tagline ?? ""}
           onDone={() => setStep(4)}
@@ -219,14 +220,17 @@ function Step2({ defaultValue, onDone }: { defaultValue: string; onDone: (v: str
 }
 
 function Step3({
+  industryKey,
   defaultDescription,
   defaultTagline,
   onDone,
 }: {
+  industryKey: string;
   defaultDescription: string;
   defaultTagline: string;
   onDone: () => void;
 }) {
+  const industry = getIndustry(industryKey);
   const [state, formAction] = useActionState<OnboardingState, FormData>(async (prev, fd) => {
     const result = await onboardingStep3(prev, fd);
     if (!result?.error) onDone();
@@ -247,13 +251,19 @@ function Step3({
         <Label htmlFor="tagline" optional>
           Kurzer Slogan
         </Label>
-        <Input id="tagline" name="tagline" defaultValue={defaultTagline} placeholder="z. B. Dein Auto, glänzend wie neu." />
+        <Input id="tagline" name="tagline" defaultValue={defaultTagline} placeholder={industry.tagline} />
       </div>
       <div>
         <Label htmlFor="description" optional>
           Beschreibung
         </Label>
-        <Textarea id="description" name="description" rows={4} defaultValue={defaultDescription} />
+        <Textarea
+          id="description"
+          name="description"
+          rows={4}
+          defaultValue={defaultDescription}
+          placeholder={industry.description}
+        />
       </div>
       <ErrorText state={state} />
       <SubmitButton>Weiter</SubmitButton>
@@ -317,13 +327,18 @@ function Step5({
       </div>
       {!hasExistingServices && (
         <ul className="space-y-2">
-          {industry.exampleServices.slice(0, 3).map((name) => (
+          {industry.services.slice(0, 3).map((service) => (
             <li
-              key={name}
-              className="flex items-center gap-2.5 rounded-lg border border-ink-100 px-3.5 py-2.5 text-sm text-ink-700"
+              key={service.name}
+              className="flex items-center justify-between gap-2.5 rounded-lg border border-ink-100 px-3.5 py-2.5 text-sm text-ink-700"
             >
-              <Check className="h-4 w-4 text-brand-600" />
-              {name}
+              <span className="flex items-center gap-2.5">
+                <Check className="h-4 w-4 text-brand-600" />
+                {service.name}
+              </span>
+              {service.price !== null && (
+                <span className="text-ink-400">{service.price} €</span>
+              )}
             </li>
           ))}
         </ul>

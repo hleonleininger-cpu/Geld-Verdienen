@@ -5,10 +5,23 @@ import { createClient } from "@/lib/supabase/server";
 import { formatCurrencyEUR, formatDateDe, QUOTE_STATUS_BADGE_CLASSES, QUOTE_STATUS_LABELS } from "@/lib/format";
 import { getEffectiveQuoteStatus } from "@/lib/quotes";
 import { track } from "@/lib/analytics";
+import { getAvailableAppointmentSlots } from "@/lib/data/appointments";
 import { Badge } from "@/components/ui/Card";
 import { Logo } from "@/components/Logo";
 import { QuoteActions } from "@/components/public/QuoteActions";
+import { AppointmentBooking } from "@/components/public/AppointmentBooking";
+import { formatDateTimeDe } from "@/lib/format";
 import type { PublicQuotePayload } from "@/types/database";
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(isoDay: string, days: number): string {
+  const date = new Date(`${isoDay}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return isoDate(date);
+}
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false } };
@@ -39,15 +52,28 @@ async function loadQuote(token: string): Promise<PublicQuotePayload | null> {
 
 export default async function PublicQuotePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ date?: string }>;
 }) {
   const { token } = await params;
+  const { date: requestedDate } = await searchParams;
   const quote = await loadQuote(token);
   if (!quote) notFound();
 
   const effectiveStatus = getEffectiveQuoteStatus(quote.status, quote.valid_until);
   const isActionable = effectiveStatus === "sent" || effectiveStatus === "viewed";
+
+  const showBooking = effectiveStatus === "accepted" && quote.calendar_enabled && !quote.appointment;
+  const minDate = isoDate(new Date());
+  const selectedDate =
+    requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && requestedDate >= minDate
+      ? requestedDate
+      : minDate;
+  const availableSlots = showBooking
+    ? await getAvailableAppointmentSlots(token, selectedDate)
+    : [];
 
   return (
     <div className="min-h-screen bg-sand-100 py-8">
@@ -176,6 +202,24 @@ export default async function PublicQuotePage({
           <div className="mt-8">
             {isActionable ? (
               <QuoteActions token={token} />
+            ) : effectiveStatus === "accepted" && quote.appointment ? (
+              <div className="rounded-xl border border-brand-200 bg-brand-50 px-5 py-4 text-center text-sm font-medium text-brand-800">
+                Termin bestätigt: {formatDateTimeDe(quote.appointment.scheduled_at)} Uhr
+              </div>
+            ) : showBooking ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-brand-200 bg-brand-50 px-5 py-4 text-center text-sm font-medium text-brand-800">
+                  Dieses Angebot wurde angenommen.
+                </div>
+                <AppointmentBooking
+                  token={token}
+                  date={selectedDate}
+                  minDate={minDate}
+                  prevDate={addDays(selectedDate, -1)}
+                  nextDate={addDays(selectedDate, 1)}
+                  slots={availableSlots}
+                />
+              </div>
             ) : effectiveStatus === "accepted" ? (
               <div className="rounded-xl border border-brand-200 bg-brand-50 px-5 py-4 text-center text-sm font-medium text-brand-800">
                 Dieses Angebot wurde angenommen.

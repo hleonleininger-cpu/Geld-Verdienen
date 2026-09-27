@@ -27,6 +27,9 @@ const business: BusinessRow = {
   stripe_subscription_id: null,
   referral_code: "testcode",
   referred_by_code: null,
+  is_demo: false,
+  appointment_duration_minutes: 60,
+  appointment_buffer_minutes: 0,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };
@@ -47,6 +50,8 @@ const baseLead: LeadRow = {
   assignee_id: null,
   attachment_url: null,
   reminder_at: null,
+  form_id: null,
+  custom_answers: {},
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };

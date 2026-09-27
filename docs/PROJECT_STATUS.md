@@ -1,13 +1,106 @@
 # Project Status
 
-Stand: **Produkt-Phase** abgeschlossen (nach MVP + Production-Hardening-
-Pass, siehe Historie weiter unten). AnfragePilot bildet jetzt den
-kompletten Aktivierungs-Funnel ab: Onboarding-Wizard → Aktivierungs-
-Checkliste → öffentliche Mini-Site → Lead-Pipeline → Angebots-Workflow
-mit Kunden-Portal → Plan-/Trial-Gating → Stripe-Abrechnung → Produkt-
-Analytics. Details je Schritt in `docs/PRODUCT_FLOWS.md`.
+Stand: **Conversion-Funnel-Phase** abgeschlossen (nach Produkt-Phase +
+Production-Hardening-Pass, siehe Historie weiter unten). AnfragePilot
+bildet jetzt den vollständigen Kunden-Funnel ab: BESUCHER → BUSINESS-SEITE
+→ ANFRAGE → LEAD → BENACHRICHTIGUNG → ANTWORT → ANGEBOT → KUNDE SIEHT
+ANGEBOT → KUNDE NIMMT AN → TERMIN → GEWONNEN. Details je Schritt in
+`docs/PRODUCT_FLOWS.md`.
 
-## Produkt-Phase: was neu hinzukam
+## Conversion-Funnel-Phase: was neu hinzukam
+
+- **Custom Request Form Builder** (`app/dashboard/forms/`,
+  `lib/forms.ts`, `lib/data/forms.ts`): pro Business beliebig viele
+  eigene Anfrageformulare mit 10 Feldtypen (Text/Textarea/E-Mail/Telefon/
+  Zahl/Datum/Select/Multiselect/Checkbox/Datei), öffentlich erreichbar
+  unter `/request/[businessSlug]/[formSlug]`. Das bestehende Standard-
+  formular unter `/[businessSlug]` funktioniert unveraendert weiter.
+  Feld-Definitionen werden bei jeder Einreichung frisch server-seitig aus
+  der DB geladen und validiert (`validateDynamicSubmission`) – niemals
+  vom Client vertraut. "Formular aus Branchen-Vorlage erstellen" nutzt
+  dieselben Branchendaten wie unten, statt eigene Komponenten zu
+  duplizieren.
+- **Branchen-Vorlagen, jetzt vollstaendig** (`lib/industries.ts`): alle
+  5 Branchen (Autopflege, Reinigung, Gartenservice, Fotografie, Handwerk)
+  haben jetzt neben den Antwort-Textbausteinen auch Profil-Vorschlaege
+  (Tagline/Beschreibung), vollstaendige Standard-Leistungen (Name, Preis,
+  Dauer), Formularfeld-Vorlagen, FAQ-Eintraege und eine Beispiel-
+  Angebotsstruktur (mehrere Positionen) – daten-getrieben, eine einzige
+  Quelle fuer Onboarding, Formular-Builder, Angebotsgenerator und
+  oeffentliche Seite.
+- **E-Mail-Provider-Abstraktion** (`lib/email/`): `EmailProvider`-
+  Interface analog zu `PaymentProvider`, `ConsoleEmailProvider` (Dev,
+  loggt nur) und `ResendEmailProvider` (HTTP/fetch, kein SDK, Workers-
+  kompatibel, mit Timeout). Lead-Benachrichtigung, Angebots-E-Mail,
+  Annahme-Benachrichtigung – alle "best effort": ein fehlgeschlagener
+  Versand darf niemals den Lead/das Angebot selbst zum Scheitern bringen.
+- **Terminbuchung** (`supabase/migrations/0004_conversion_funnel.sql`,
+  `app/dashboard/appointments/`, `components/public/AppointmentBooking.tsx`):
+  Owner konfiguriert Termindauer/Puffer/blockierte Zeiten (Oeffnungszeiten
+  kommen aus dem bestehenden Profil), Kunde waehlt nach Angebots-Annahme
+  einen freien Slot. Doppelbuchung ist durch eine echte DB-Exclusion-
+  Constraint (`btree_gist`) ausgeschlossen, nicht nur durch eine App-
+  Pruefung. Die SECURITY-DEFINER-RPC `book_appointment` prueft zusaetzlich
+  serverseitig Oeffnungszeiten/blockierte Zeiten, bevor sie einen Slot
+  akzeptiert – ein Client kann keinen beliebigen Zeitpunkt erzwingen.
+  Terminbuchung ist ein Pro-Plan-Feature, serverseitig ueber
+  `business_has_calendar_feature()` (SQL) UND `lib/entitlements.ts` (TS)
+  geprueft – niemals allein anhand von Browser-/Checkout-Zustand.
+- **Explizite State Machines** (`lib/stateMachine.ts`): Lead-/Quote-/
+  Appointment-Status als reine, getestete Transition-Funktionen statt
+  verstreuter Ad-hoc-Checks; in `updateLeadStatus`/`sendQuote`/
+  `updateAppointmentStatus` verdrahtet.
+- **Demo-Modus** (`/demo`, `lib/demo/data.ts`,
+  `components/demo/DemoExperience.tsx`): rein clientseitig gerenderte,
+  statische Demo ("Shine Garage", Autopflege) – oeffentliche Seite,
+  Anfrageformular (nur lokaler State, kein Server-Call), Anfragen-Liste,
+  Beispiel-Angebot, Terminbuchungs-Vorschau, Kennzahlen. Es gibt **keinen**
+  Demo-Tenant in der Datenbank – "niemals Demo- mit echten Mandantendaten
+  vermischen" ist damit strukturell garantiert statt nur per Flag.
+- **Umsatzorientiertes Dashboard** (`app/dashboard/page.tsx`,
+  `lib/data/leads.ts::getRevenueStats`,
+  `components/dashboard/FunnelWidget.tsx`): Neue Anfragen, Offene
+  Angebote, Anstehende Termine, Gewonnene Auftraege, Geschaetzter Umsatz
+  (Summe angenommener Angebote) + ein einfacher Anfragen→Angebote→
+  Angenommen→Gewonnen-Funnel-Balken.
+- **Abrechnungs-UX vervollstaendigt** (`app/dashboard/billing/`):
+  Nutzungsanzeige (Lead-Kontingent) jetzt auch auf der Abrechnungsseite,
+  und ein bisher implementiertes, aber nie verdrahtetes
+  `cancelSubscription()` der `PaymentProvider`-Abstraktion ist jetzt
+  ueber eine explizite "Abo kuendigen"-Aktion mit Bestaetigungsschritt
+  erreichbar. Der DB-Status wird weiterhin ausschliesslich per Webhook
+  aktualisiert, nie direkt von dieser Aktion.
+- **Webhook-Idempotenz** (`processed_webhook_events`,
+  `app/api/webhooks/stripe/route.ts`): die Tabelle existierte bereits,
+  wurde aber nie benutzt – der Webhook-Handler verarbeitete jedes Stripe-
+  Event bei jeder (auch doppelten) Zustellung erneut. Jetzt wird die
+  Event-ID zuerst per PRIMARY-KEY-Insert reserviert; eine Doppelzustellung
+  schlaegt dort fehl und wird uebersprungen, bevor irgendein Seiteneffekt
+  (z. B. `track("subscription_started")`) ein zweites Mal ausgeloest wird.
+- **Fehlerresilienz-Audit**: beide externen HTTP-Integrationen (Stripe,
+  Resend) liefen zuvor ohne Timeout und ohne Absicherung gegen einen
+  werfenden `fetch()` – ein Netzwerkfehler haette als unbehandelte
+  Exception bis in die Server Action durchschlagen koennen. Beide laufen
+  jetzt ueber `lib/fetchWithTimeout.ts` (hartes Timeout via
+  `AbortSignal.timeout`) und geben bei jedem Fehler `{ok:false}` zurueck,
+  statt zu werfen.
+- **Tenant-Isolation nachgeschaerft**: die anon-Policies fuer
+  `request_forms`/`request_form_fields` pruef­ten bislang nur `active`,
+  nicht ob das zugehoerige Business ueberhaupt veroeffentlicht ist – ueber
+  den anon-Key waeren dadurch Formulare noch unveroeffentlichter
+  Businesses auflistbar gewesen. Gefixt (Policy + Regressionstest).
+- **Neue pgTAP-Tests**: `07_conversion_funnel_token_isolation.test.sql`
+  (Token-Isolation im Kunden-Portal, Terminbuchungs-RPCs, die o. g.
+  RLS-Regression) und `08_webhook_idempotency.test.sql`
+  (PRIMARY-KEY-Doppelbuchungs-Sperre, RLS-Ausschluss fuer
+  `processed_webhook_events`).
+- **Neue Vitest-Suiten/-Faelle**: `tests/unit/forms.test.ts` (16),
+  `tests/unit/stateMachine.test.ts` (14), `tests/unit/email.test.ts`
+  (12), erweiterte `tests/unit/industries.test.ts` (Branchen-Vorlagen-
+  Vollstaendigkeit) und `tests/unit/stripeWebhook.test.ts` (Checkout-
+  Sicherheit, Netzwerkfehler-Handling, Kuendigung/unbekanntes Event).
+
+## Produkt-Phase: was neu hinzukam (historisch)
 
 - **Onboarding** (`app/onboarding/`): 10-Schritte-Wizard, idempotent und
   resumable (Business wird immer über `owner_id` gesucht, `onboarding_step`
@@ -52,13 +145,11 @@ Analytics. Details je Schritt in `docs/PRODUCT_FLOWS.md`.
   `tests/unit/validation.test.ts`; pgTAP
   `05_public_quote_portal.test.sql` + `06_product_phase_rls.test.sql`.
 
-Bewusst **nicht** bzw. nur reduziert umgesetzt (siehe FINAL-RULE-Abwägung
-in `docs/MONETIZATION.md`/`docs/ARCHITECTURE.md`): Kalender/Termine,
-individueller Formular-Builder, mehrere Teammitglieder, Shop-Checkout-
-Überarbeitung, ein separater Demo-Modus. Diese hätten keinen der sechs
-Leitkriterien (erster Wert, Zeitersparnis, Kundengewinnung, Kunden-
-verwaltung, leichteres Bezahlen, leichtere Bindung) stark genug bedient,
-um den Umfang in dieser Phase zu rechtfertigen.
+Bewusst **nicht** umgesetzt (siehe FINAL-RULE-Abwägung in
+`docs/MONETIZATION.md`/`docs/ARCHITECTURE.md`): mehrere Teammitglieder,
+Shop-Checkout-Überarbeitung. Kalender/Termine, individueller Formular-
+Builder und ein Demo-Modus wurden zwischenzeitlich in der
+Conversion-Funnel-Phase (siehe oben) nachgeliefert.
 
 ## Historie: Production-Hardening-Pass (vorherige Phase)
 
@@ -138,9 +229,18 @@ Stand damals: Production-Hardening-Pass abgeschlossen (nach MVP-Tasks 1–17).
     (Validierung, Formatierung, Antwortgenerator, Open-Redirect-Schutz,
     Branchen-Empfehlungen).
 
-## Verifiziert (Produkt-Phase, in dieser Sandbox erfolgreich ausgeführt)
+## Verifiziert (Conversion-Funnel-Phase, in dieser Sandbox erfolgreich ausgeführt)
 
 Nach **jedem** der oben genannten Arbeitsschritte, nicht nur am Ende:
+
+- `npm run typecheck` – grün
+- `npm run lint` – grün
+- `npm test` (Vitest, 137 Tests) – grün
+- `npm run build` (regulärer Next.js-Build) – grün
+- `npm run cf:build` (`@opennextjs/cloudflare`) – grün, erzeugt
+  `.open-next/worker.js`
+
+## Verifiziert (Produkt-Phase, historisch)
 
 - `npm run typecheck` – grün
 - `npm run lint` – grün
@@ -167,10 +267,14 @@ Nach **jedem** der oben genannten Arbeitsschritte, nicht nur am Ende:
 
 ## NICHT in dieser Sandbox verifiziert
 
-- **pgTAP-RLS-Tests** (`supabase/tests/database/`, inkl. der beiden neuen
-  Dateien `05_public_quote_portal.test.sql`/
-  `06_product_phase_rls.test.sql`): kein Docker/`supabase`-CLI in dieser
-  Sandbox verfügbar (`supabase: command not found`).
+- **pgTAP-RLS-Tests** (`supabase/tests/database/`, inkl. der vier neuen
+  Dateien `05_public_quote_portal.test.sql`, `06_product_phase_rls.test.sql`,
+  `07_conversion_funnel_token_isolation.test.sql`,
+  `08_webhook_idempotency.test.sql`): kein Docker/`supabase`-CLI in dieser
+  Sandbox verfügbar (`supabase: command not found`). Alle vier Dateien
+  sind statisch geprüfter, wohlgeformter SQL-Code nach demselben Muster
+  wie die bereits etablierten Dateien, aber **nicht** in dieser Sandbox
+  ausgeführt.
 - **Live-Supabase-Integrationstests** (echter Login-Flow, echtes
   Datei-/Galerie-Upload, echte E-Mail-Zustellung): keine echten Supabase-
   Zugangsdaten in dieser Sandbox vorhanden.
@@ -193,11 +297,16 @@ Nach **jedem** der oben genannten Arbeitsschritte, nicht nur am Ende:
 - Shop-Checkout bleibt eine reine Produktdarstellung ohne echten Kauf.
 - `/datenschutz` und `/agb` sind technische Gerüste mit Platzhaltern, keine
   fertigen Rechtstexte.
-- Kalender/Termine, individueller Formular-Builder, Team-Mitglieder:
-  Plan-Feature-Flags dafür existieren in `lib/entitlements.ts`, gaten aber
-  nichts Reales (siehe `docs/MONETIZATION.md`).
-- Kein echter Nachrichtenversand (E-Mail/SMS/WhatsApp) – nur
-  Copy-to-Clipboard-Vorlagen (`lib/communication/`).
+- Team-Mitglieder: Plan-Feature-Flag dafür existiert in
+  `lib/entitlements.ts`, gatet aber nichts Reales (siehe
+  `docs/MONETIZATION.md`). Kalender/Termine und individueller
+  Formular-Builder sind seit der Conversion-Funnel-Phase real
+  durchgesetzt (SQL + TS, siehe oben).
+- Kein echter SMS/WhatsApp-Versand – nur Copy-to-Clipboard-Vorlagen
+  (`lib/communication/`). E-Mail-Versand ist über `lib/email/`
+  (Resend, HTTP-basiert) real, sofern `RESEND_API_KEY`/
+  `EMAIL_FROM_ADDRESS` gesetzt sind – sonst loggt `ConsoleEmailProvider`
+  nur (Dev-Fallback).
 - Admin-Branchen-Auswertung tallyt weiterhin clientseitig aus einer
   ungefilterten Query – für die aktuelle Datenmenge unkritisch (siehe
   `docs/ARCHITECTURE.md`); der Aktivierungs-Funnel selbst nutzt bereits
@@ -232,8 +341,16 @@ Next.js selbst läuft auf der aktuellen stabilen 16.3.x-Linie ohne offene
 ## Empfohlene nächste Schritte
 
 1. `supabase test db` lokal (mit Docker) laufen lassen und pgTAP-Ergebnisse
-   verifizieren (inkl. der beiden neuen Testdateien), bevor produktiv
+   verifizieren (inkl. der vier neuen Testdateien), bevor produktiv
    "scharf" geschaltet wird.
+1b. `supabase/migrations/0004_conversion_funnel.sql` gegen ein echtes
+    Supabase-Projekt anwenden (Formular-Builder, Termine,
+    Webhook-Idempotenz, erweiterte `get_public_quote`-RPC). Erfordert die
+    `btree_gist`-Extension (wird von der Migration selbst aktiviert).
+1c. `RESEND_API_KEY`/`EMAIL_FROM_ADDRESS` setzen, sobald echter
+    E-Mail-Versand gewünscht ist (siehe `.env.example`) – ohne diese
+    Variablen läuft `ConsoleEmailProvider` als Dev-Fallback (nur Logging,
+    kein tatsächlicher Versand).
 2. Echtes Supabase-Projekt aufsetzen, `supabase/schema.sql` ausführen,
    Onboarding-/Angebots-/Portal-Flows manuell in einem echten Browser
    testen (insbesondere den öffentlichen `/q/[token]`-Annahme-Flow).

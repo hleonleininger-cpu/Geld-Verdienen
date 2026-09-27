@@ -275,9 +275,12 @@ export async function onboardingStep5(
 
   if (!count || count === 0) {
     const industry = getIndustry(business.industry);
-    const defaults = industry.exampleServices.slice(0, 3).map((name) => ({
+    const defaults = industry.services.slice(0, 3).map((service) => ({
       business_id: business.id,
-      name,
+      name: service.name,
+      description: service.description ?? null,
+      price: service.price,
+      duration_minutes: service.duration_minutes,
       active: true,
     }));
     const { error } = await supabase.from("services").insert(defaults);

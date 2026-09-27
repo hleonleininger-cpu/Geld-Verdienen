@@ -209,6 +209,12 @@ Die `STRIPE_*`-Variablen sind **optional**: ohne sie läuft die App normal,
 statt eines funktionierenden Checkouts. Siehe
 [`docs/BILLING.md`](./docs/BILLING.md) für die Einrichtung.
 
+`RESEND_API_KEY`/`EMAIL_FROM_ADDRESS` sind ebenfalls **optional**: ohne sie
+läuft der `ConsoleEmailProvider` (loggt E-Mails nur, versendet nichts
+Echtes) – praktisch für lokale Entwicklung. Mit gesetzten Werten übernimmt
+automatisch der `ResendEmailProvider` (HTTP-API, kein SDK) den Versand von
+Lead-Benachrichtigungen, Angebots-E-Mails und Annahme-Benachrichtigungen.
+
 ### 4. Installieren & starten
 
 ```bash

@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import { Check } from "lucide-react";
 import { getCurrentBusiness } from "@/lib/data/business";
-import { getEffectivePlanInfo } from "@/lib/entitlements";
+import { getEffectivePlanInfo, getLeadQuota } from "@/lib/entitlements";
 import { getPaymentProvider } from "@/lib/billing";
 import { PRICING_PLANS } from "@/lib/pricing";
 import { PlanBadge } from "@/components/dashboard/PlanBadge";
 import { TrialBanner } from "@/components/dashboard/TrialBanner";
+import { UsageMeter } from "@/components/dashboard/UsageMeter";
 import { CheckoutButton } from "@/components/dashboard/billing/CheckoutButton";
 import { PortalButton } from "@/components/dashboard/billing/PortalButton";
+import { CancelSubscriptionButton } from "@/components/dashboard/billing/CancelSubscriptionButton";
 import { formatDateDe } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Abrechnung" };
@@ -24,6 +26,10 @@ export default async function BillingPage({
   const planInfo = getEffectivePlanInfo(business);
   const provider = getPaymentProvider();
   const paidPlans = PRICING_PLANS.filter((p) => p.key !== "free");
+  const leadQuota = await getLeadQuota(business);
+  const canCancel =
+    Boolean(business.stripe_subscription_id) &&
+    ["trialing", "active", "past_due"].includes(business.subscription_status);
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -62,8 +68,13 @@ export default async function BillingPage({
             </p>
           )}
         </div>
-        {business.stripe_customer_id && <PortalButton />}
+        <div className="flex items-center gap-3">
+          {business.stripe_customer_id && <PortalButton />}
+          {canCancel && <CancelSubscriptionButton />}
+        </div>
       </div>
+
+      <UsageMeter quota={leadQuota} />
 
       {!provider.isConfigured() && (
         <div className="rounded-xl border border-dashed border-ink-200 bg-sand-50 p-5 text-sm text-ink-500">

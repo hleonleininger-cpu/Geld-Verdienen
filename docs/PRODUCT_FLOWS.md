@@ -1,10 +1,20 @@
 # Produkt-Flows: der Aktivierungs-Funnel
 
-Dieses Dokument beschreibt den Kern-Funnel, den die Produkt-Phase abbildet:
+Dieses Dokument beschreibt den Kern-Funnel, den die Produkt-Phase +
+Conversion-Funnel-Phase abbilden:
 
 ```
 VISITOR → SIGNUP → ONBOARDING → FIRST BUSINESS PAGE →
-FIRST LEAD → FIRST QUOTE → FIRST WON CUSTOMER → PAID PLAN
+FIRST LEAD → FIRST QUOTE → FIRST WON CUSTOMER → APPOINTMENT → PAID PLAN
+```
+
+Der Kunden-seitige Teil dieses Funnels (Abschnitte 3-6 unten) ist
+zusätzlich in sich geschlossen als eigener Flow dokumentiert:
+
+```
+VISITOR → BUSINESS PAGE → REQUEST → LEAD → BUSINESS NOTIFICATION →
+RESPONSE → QUOTE → CUSTOMER VIEWS QUOTE → CUSTOMER ACCEPTS →
+APPOINTMENT → WON
 ```
 
 Jeder Schritt referenziert die konkreten Dateien, damit Änderungen an
@@ -54,13 +64,28 @@ diesem Funnel gezielt vorgenommen werden können.
 
 ## 4. First Lead
 
-- [`app/actions/leads.ts`](../app/actions/leads.ts) → `submitLead()`:
-  öffentliches, anonymes Formular, Honeypot + DB-gestütztes
-  Rate-Limiting, serverseitige Plan-Quote-Prüfung
-  (`getLeadQuota`), trackt `lead_created`.
+- **Standardformular**: [`app/actions/leads.ts`](../app/actions/leads.ts)
+  → `submitLead()` – öffentliches, anonymes Formular auf
+  `/[businessSlug]`, Honeypot + DB-gestütztes Rate-Limiting.
+- **Eigenes Formular** (Formular-Builder, Pro-Plan):
+  [`app/request/[businessSlug]/[formSlug]/actions.ts`](../app/request/[businessSlug]/[formSlug]/actions.ts)
+  → `submitDynamicForm()` – Feld-Definitionen werden bei **jeder**
+  Einreichung frisch aus `request_form_fields` geladen und serverseitig
+  validiert ([`lib/forms.ts`](../lib/forms.ts)::`validateDynamicSubmission`)
+  – niemals vom Client vertraut. Verwaltung unter
+  [`app/dashboard/forms/`](../app/dashboard/forms/); "Aus Branchen-Vorlage
+  erstellen" nutzt die Formularfelder aus
+  [`lib/industries.ts`](../lib/industries.ts).
+- Beide Wege laufen durch dieselbe geteilte Funktion
+  ([`lib/leadIngestion.ts`](../lib/leadIngestion.ts)::`ingestLead()`):
+  serverseitige Plan-Quote-Prüfung (`getLeadQuota`, übersprungen für
+  `is_demo`-Businesses), Insert, `lead_created`/`first_lead`-Tracking,
+  Best-effort-E-Mail an den Owner (`lib/email/`::`sendLeadNotification`) –
+  ein fehlgeschlagener E-Mail-Versand darf den Lead selbst niemals
+  verhindern.
 - Ein DB-Trigger (`log_lead_created_activity`, siehe
-  `supabase/schema.sql`) erzeugt automatisch ein `activity_events`- und
-  ein `notifications`-Row für den Owner – auch für anonyme Inserts, da der
+  `supabase/schema.sql`) erzeugt zusätzlich automatisch ein
+  `activity_events`-Row für den Owner – auch für anonyme Inserts, da der
   Trigger `SECURITY DEFINER` läuft.
 - Sichtbar für den Owner in der Pipeline
   ([`app/dashboard/leads/page.tsx`](../app/dashboard/leads/page.tsx),
@@ -92,6 +117,30 @@ diesem Funnel gezielt vorgenommen werden können.
 - Jede Kundenaktion (angesehen/angenommen/abgelehnt) erzeugt automatisch
   ein `activity_events`- und `notifications`-Row und trackt
   `quote_viewed`/`quote_accepted`.
+
+## 5b. Appointment (nach Angebots-Annahme, Pro-Plan)
+
+- Sobald ein Angebot angenommen ist, zeigt `app/q/[token]/page.tsx` einen
+  Datums-/Slot-Picker
+  ([`components/public/AppointmentBooking.tsx`](../components/public/AppointmentBooking.tsx)),
+  sofern das Business das Calendar-Feature hat (Pro/Business-Plan) und
+  noch kein Termin existiert.
+- Verfügbare Slots kommen aus der SECURITY-DEFINER-RPC
+  `get_available_appointment_slots` (Öffnungszeiten − blockierte Zeiten −
+  bereits vergebene Termine, inkl. Pufferzeit). Die eigentliche Buchung
+  läuft über `book_appointment()`
+  ([`app/q/[token]/actions.ts`](../app/q/[token]/actions.ts)) – diese RPC
+  prüft **serverseitig erneut** Angebots-Status, Feature-Freischaltung,
+  Öffnungszeiten und blockierte Zeiten, bevor sie einen Termin anlegt
+  ("Create appointment only after server-side availability check").
+- Doppelbuchung ist zusätzlich durch eine DB-Exclusion-Constraint
+  (`btree_gist`, `appointments_no_overlap`) hart ausgeschlossen – nicht
+  nur durch die Anwendungslogik.
+- Verwaltung (Termindauer/Puffer, blockierte Zeiten, Terminliste mit
+  Status-Übergängen) unter
+  [`app/dashboard/appointments/`](../app/dashboard/appointments/); der
+  verknüpfte Termin erscheint zusätzlich auf der Lead-Detailseite.
+- Trackt `appointment_booked`.
 
 ## 6. First Won Customer
 

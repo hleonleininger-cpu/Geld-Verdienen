@@ -32,11 +32,31 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "invalid_signature" }, { status: 400 });
   }
 
+  const supabase = createAdminClient();
+
+  // Idempotenz ("handle duplicate webhook events idempotently"): Stripe
+  // liefert Events per "at least once", ein Event kann also mehrfach
+  // (auch gleichzeitig) hier ankommen. Der Insert dient als atomarer
+  // "Lock" ueber die PRIMARY KEY-Constraint auf `id` – schlaegt er wegen
+  // eines Duplikats fehl (23505 = unique_violation), wurde dieses Event
+  // bereits verarbeitet und wird ue­bersprungen, statt z. B. ein
+  // `track("subscription_started")` ein zweites Mal auszuloesen.
+  if (event.id) {
+    const { error: dedupeError } = await supabase
+      .from("processed_webhook_events")
+      .insert({ id: event.id, provider: provider.name });
+    if (dedupeError) {
+      if (dedupeError.code === "23505") {
+        return NextResponse.json({ received: true, duplicate: true });
+      }
+      logger.error("billing.webhook", "Idempotenz-Check fehlgeschlagen", dedupeError);
+      return NextResponse.json({ error: "processing_failed" }, { status: 500 });
+    }
+  }
+
   if (event.type === "unhandled") {
     return NextResponse.json({ received: true });
   }
-
-  const supabase = createAdminClient();
 
   try {
     if (event.type === "checkout_completed") {

@@ -9,8 +9,11 @@ import {
   FAQ,
   FinalCTA,
 } from "@/components/marketing/Sections";
+import { track } from "@/lib/analytics";
 
-export default function HomePage() {
+export default async function HomePage() {
+  await track("landing_view");
+
   return (
     <>
       <MarketingNavbar />

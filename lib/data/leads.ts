@@ -148,6 +148,46 @@ export async function getQuotesForBusiness(businessId: string): Promise<QuoteWit
   }));
 }
 
+export interface RevenueStats {
+  openQuotesCount: number;
+  acceptedQuotesCount: number;
+  totalQuotesCount: number;
+  /** Summe aus `price` aller ANGENOMMENEN Angebote – die tatsaechlich realisierte Umsatzschaetzung. */
+  estimatedRevenueEUR: number;
+}
+
+/**
+ * Kennzahlen fuer das umsatzorientierte Dashboard (Section 12): wie viele
+ * Angebote sind offen (gesendet/angesehen), wie viele wurden angenommen,
+ * und wie viel Umsatz steckt in den angenommenen Angeboten. Quotes haben
+ * keine eigene `business_id` (siehe getQuotesForBusiness), daher derselbe
+ * Zwei-Schritt-Ansatz ueber die Lead-IDs des Business.
+ */
+export async function getRevenueStats(businessId: string): Promise<RevenueStats> {
+  const supabase = await createClient();
+  const { data: leads } = await supabase.from("leads").select("id").eq("business_id", businessId);
+  const leadIds = (leads ?? []).map((l) => l.id);
+  if (leadIds.length === 0) {
+    return { openQuotesCount: 0, acceptedQuotesCount: 0, totalQuotesCount: 0, estimatedRevenueEUR: 0 };
+  }
+
+  const { data: quotes } = await supabase
+    .from("quotes")
+    .select("status, price")
+    .in("lead_id", leadIds);
+  const rows = quotes ?? [];
+
+  const openQuotesCount = rows.filter((q) => q.status === "sent" || q.status === "viewed").length;
+  const acceptedQuotes = rows.filter((q) => q.status === "accepted");
+
+  return {
+    openQuotesCount,
+    acceptedQuotesCount: acceptedQuotes.length,
+    totalQuotesCount: rows.length,
+    estimatedRevenueEUR: acceptedQuotes.reduce((sum, q) => sum + q.price, 0),
+  };
+}
+
 export interface DashboardStats {
   newCount: number;
   openCount: number;

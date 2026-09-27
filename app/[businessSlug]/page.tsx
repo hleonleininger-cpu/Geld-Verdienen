@@ -14,14 +14,10 @@ import type { OpeningHoursEntry } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-const FAQ_ITEMS = [
+const GENERIC_FAQ_ITEMS = [
   {
     q: "Ist eine Anfrage kostenlos und unverbindlich?",
     a: "Ja. Das Absenden einer Anfrage kostet nichts und verpflichtet dich zu nichts – du bekommst zunächst nur eine Rückmeldung.",
-  },
-  {
-    q: "Wie schnell bekomme ich eine Antwort?",
-    a: "Das hängt vom Unternehmen ab, meist erfolgt eine Rückmeldung innerhalb weniger Stunden bis Tage.",
   },
   {
     q: "Was passiert nach meiner Anfrage?",
@@ -142,11 +138,9 @@ export default async function BusinessLeadPage({
             >
               {business.tagline || industry.label}
             </p>
-            {business.description && (
-              <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-ink-500">
-                {business.description}
-              </p>
-            )}
+            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-ink-500">
+              {business.description || industry.description}
+            </p>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-3 text-xs text-ink-400">
               {business.phone && <span>{business.phone}</span>}
               {business.email && <span>{business.email}</span>}
@@ -240,7 +234,7 @@ export default async function BusinessLeadPage({
               Häufige Fragen
             </h2>
             <div className="mx-auto mt-6 max-w-xl space-y-4">
-              {FAQ_ITEMS.map((item) => (
+              {[...industry.faq, ...GENERIC_FAQ_ITEMS].map((item) => (
                 <div key={item.q}>
                   <p className="font-medium text-ink-900">{item.q}</p>
                   <p className="mt-1 text-sm leading-relaxed text-ink-500">{item.a}</p>

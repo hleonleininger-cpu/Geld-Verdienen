@@ -30,7 +30,7 @@ export function MarketingFooter() {
         <div>
           <p className="mb-3 text-sm font-semibold text-ink-900">Demo</p>
           <ul className="space-y-2 text-sm text-ink-500">
-            <li><Link href="/glanzwerk-autopflege" className="hover:text-ink-900">Beispiel-Anfrageseite</Link></li>
+            <li><Link href="/demo" className="hover:text-ink-900">Beispiel-Anfrageseite</Link></li>
           </ul>
         </div>
       </div>

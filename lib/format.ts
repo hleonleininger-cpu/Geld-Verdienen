@@ -1,4 +1,10 @@
-import type { LeadStatus, LeadPriority, QuoteStatus } from "@/types/database";
+import type {
+  LeadStatus,
+  LeadPriority,
+  QuoteStatus,
+  RequestFieldType,
+  AppointmentStatus,
+} from "@/types/database";
 
 export function formatDateDe(value: string | null | undefined): string {
   if (!value) return "flexibel";
@@ -22,6 +28,13 @@ export function formatDateTimeDe(value: string | null | undefined): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+export function formatTimeDe(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatRelativeDe(value: string | null | undefined): string {
@@ -113,6 +126,22 @@ export const QUOTE_STATUS_BADGE_CLASSES: Record<QuoteStatus, string> = {
   expired: "bg-ink-100 text-ink-400",
 };
 
+export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
+  scheduled: "Geplant",
+  confirmed: "Bestätigt",
+  completed: "Abgeschlossen",
+  cancelled: "Storniert",
+  no_show: "Nicht erschienen",
+};
+
+export const APPOINTMENT_STATUS_BADGE_CLASSES: Record<AppointmentStatus, string> = {
+  scheduled: "bg-sky-100 text-sky-700",
+  confirmed: "bg-brand-600 text-white",
+  completed: "bg-ink-100 text-ink-500",
+  cancelled: "bg-red-100 text-red-700",
+  no_show: "bg-amber-100 text-amber-700",
+};
+
 export const PRIORITY_LABELS: Record<LeadPriority, string> = {
   low: "Niedrig",
   medium: "Mittel",
@@ -123,6 +152,19 @@ export const PRIORITY_BADGE_CLASSES: Record<LeadPriority, string> = {
   low: "bg-ink-100 text-ink-500",
   medium: "bg-sky-100 text-sky-700",
   high: "bg-red-100 text-red-700",
+};
+
+export const FIELD_TYPE_LABELS: Record<RequestFieldType, string> = {
+  text: "Text (einzeilig)",
+  textarea: "Text (mehrzeilig)",
+  email: "E-Mail",
+  phone: "Telefon",
+  number: "Zahl",
+  date: "Datum",
+  select: "Auswahl (eine Option)",
+  multiselect: "Auswahl (mehrere Optionen)",
+  checkbox: "Checkbox (ja/nein)",
+  file: "Datei-Upload",
 };
 
 export function parseBudget(budget: string | null | undefined): number {

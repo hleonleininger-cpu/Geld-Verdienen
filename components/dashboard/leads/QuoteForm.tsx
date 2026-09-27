@@ -23,17 +23,21 @@ export function QuoteForm({
   leadId,
   defaultTitle,
   defaultPrice,
+  defaultLineItems,
 }: {
   leadId: string;
   defaultTitle: string;
   defaultPrice: number;
+  defaultLineItems?: QuoteLineItem[];
 }) {
   const initialState: LeadActionState = null;
   const [state, formAction] = useActionState(createQuote, initialState);
 
-  const [lineItems, setLineItems] = useState<QuoteLineItem[]>([
-    { description: defaultTitle, quantity: 1, unit_price: defaultPrice },
-  ]);
+  const [lineItems, setLineItems] = useState<QuoteLineItem[]>(
+    defaultLineItems && defaultLineItems.length > 0
+      ? defaultLineItems
+      : [{ description: defaultTitle, quantity: 1, unit_price: defaultPrice }]
+  );
   const [discountAmount, setDiscountAmount] = useState(0);
   const [taxRate, setTaxRate] = useState(0);
 

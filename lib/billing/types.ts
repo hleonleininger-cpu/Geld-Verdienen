@@ -36,6 +36,8 @@ export interface SubscriptionSnapshot {
 
 /** Ein vom Webhook geparstes, providerunabhaengiges Ereignis. */
 export interface BillingWebhookEvent {
+  /** Die vom Provider vergebene Event-ID (z. B. Stripes `evt_...`) – Grundlage für Idempotenz. */
+  id: string | null;
   type:
     | "checkout_completed"
     | "subscription_updated"

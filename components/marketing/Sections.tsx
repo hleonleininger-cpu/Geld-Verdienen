@@ -5,6 +5,8 @@ import {
   Bell,
   Smartphone,
   LayoutGrid,
+  CalendarClock,
+  ListChecks,
 } from "lucide-react";
 import { PRICING_PLANS } from "@/lib/pricing";
 import { PricingCard } from "@/components/marketing/PricingCard";
@@ -56,18 +58,28 @@ export function HowItWorks() {
   const steps = [
     {
       n: "01",
-      title: "Teile deinen Link",
-      text: "Du bekommst eine persönliche Anfrageseite (z. B. anfragepilot.de/dein-betrieb) – für Website, Instagram-Bio oder QR-Code.",
+      title: "Anfragen sammeln",
+      text: "Kunden füllen dein Anfrageformular aus – auf Website, Instagram-Bio oder per QR-Code. Alles landet übersichtlich an einem Ort.",
     },
     {
       n: "02",
-      title: "Kunden stellen Anfragen",
-      text: "Kunden füllen ein kurzes, professionelles Formular aus – auf dem Handy genauso einfach wie am Desktop.",
+      title: "Schneller antworten",
+      text: "Fertige, editierbare Antwortvorlagen helfen dir, in Sekunden statt Stunden zu reagieren.",
     },
     {
       n: "03",
-      title: "Du antwortest in Sekunden",
-      text: "Alle Anfragen landen übersichtlich im Dashboard – inklusive Antwort- und Angebotsvorlage.",
+      title: "Angebot erstellen",
+      text: "Titel, Positionen und Preis eingeben – fertig ist ein hochwertiges Angebot mit eigenem Link.",
+    },
+    {
+      n: "04",
+      title: "Zusage einholen",
+      text: "Dein Kunde sieht das Angebot online und nimmt es mit einem Klick an – du wirst sofort benachrichtigt.",
+    },
+    {
+      n: "05",
+      title: "Termin buchen",
+      text: "Nach der Zusage wählt dein Kunde direkt einen freien Termin aus deinem Kalender.",
     },
   ];
 
@@ -76,9 +88,9 @@ export function HowItWorks() {
       <div className="container-app">
         <p className="eyebrow">So funktioniert es</p>
         <h2 className="mt-3 max-w-xl font-display text-3xl font-semibold tracking-tight text-ink-950 sm:text-4xl">
-          Drei Schritte zu mehr Kunden.
+          Vom ersten Kontakt bis zum gebuchten Termin.
         </h2>
-        <div className="mt-12 grid gap-8 sm:grid-cols-3">
+        <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
           {steps.map((step) => (
             <div key={step.n}>
               <p className="font-display text-4xl font-semibold text-ink-200">
@@ -111,8 +123,18 @@ const features = [
   },
   {
     icon: FileText,
-    title: "Angebote in Sekunden",
-    text: "Titel, Preis und Gültigkeit eingeben – fertig ist ein hochwertiges Angebot als PDF.",
+    title: "Angebote mit Online-Zusage",
+    text: "Titel, Positionen und Preis eingeben – dein Kunde sieht das Angebot online und nimmt es direkt an.",
+  },
+  {
+    icon: CalendarClock,
+    title: "Terminbuchung nach Zusage",
+    text: "Sobald ein Angebot angenommen ist, wählt dein Kunde selbst einen freien Termin aus deinem Kalender.",
+  },
+  {
+    icon: ListChecks,
+    title: "Eigene Anfrageformulare",
+    text: "Passe Felder und Fragen an deine Leistungen an – oder starte direkt mit einer fertigen Branchen-Vorlage.",
   },
   {
     icon: Inbox,
@@ -197,7 +219,11 @@ const faqs = [
   },
   {
     q: "Kann ich jederzeit kündigen?",
-    a: "Ja. Es gibt keine Mindestlaufzeit. Die Bezahlfunktionen befinden sich aktuell noch im Aufbau.",
+    a: "Ja. Es gibt keine Mindestlaufzeit – du kannst dein Abo jederzeit im Dashboard unter „Abrechnung“ kündigen.",
+  },
+  {
+    q: "Wie funktioniert die Terminbuchung?",
+    a: "Sobald ein Kunde dein Angebot online annimmt, kann er direkt einen freien Termin aus deinem hinterlegten Kalender auswählen – ohne Hin- und Herschreiben.",
   },
   {
     q: "Was passiert mit den Daten meiner Kunden?",
@@ -245,7 +271,7 @@ export function FinalCTA() {
           </p>
           <div className="mt-7">
             <ButtonLink href="/register" variant="secondary" size="lg">
-              Jetzt kostenlos testen
+              Kostenlos starten
             </ButtonLink>
           </div>
         </div>

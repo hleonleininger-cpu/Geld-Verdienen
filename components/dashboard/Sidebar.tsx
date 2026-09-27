@@ -12,6 +12,8 @@ import {
   Wrench,
   CreditCard,
   Bell,
+  ListChecks,
+  CalendarClock,
 } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/app/(auth)/actions";
@@ -25,6 +27,8 @@ export function Sidebar({ slug, unreadCount = 0 }: { slug: string; unreadCount?:
     { href: "/dashboard/leads", label: "Anfragen", icon: Kanban, exact: false },
     { href: "/dashboard/quotes", label: "Angebote", icon: FileText, exact: false },
     { href: "/dashboard/services", label: "Leistungen", icon: Wrench, exact: false },
+    { href: "/dashboard/forms", label: "Formulare", icon: ListChecks, exact: false },
+    { href: "/dashboard/appointments", label: "Termine", icon: CalendarClock, exact: false },
     {
       href: "/dashboard/notifications",
       label: "Benachrichtigungen",

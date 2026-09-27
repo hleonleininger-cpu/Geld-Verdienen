@@ -49,6 +49,7 @@ describe("StripeProvider.verifyWebhook", () => {
   it("accepts a request with a valid signature and parses checkout.session.completed", async () => {
     const provider = new StripeProvider();
     const body = JSON.stringify({
+      id: "evt_checkout_1",
       type: "checkout.session.completed",
       data: {
         object: {
@@ -62,10 +63,44 @@ describe("StripeProvider.verifyWebhook", () => {
 
     const event = await provider.verifyWebhook(body, header);
     expect(event).not.toBeNull();
+    expect(event?.id).toBe("evt_checkout_1");
     expect(event?.type).toBe("checkout_completed");
     expect(event?.businessId).toBe("biz_123");
     expect(event?.customerId).toBe("cus_123");
     expect(event?.subscriptionId).toBe("sub_123");
+  });
+
+  it("parses customer.subscription.deleted as a cancellation", async () => {
+    const provider = new StripeProvider();
+    const body = JSON.stringify({
+      id: "evt_cancel_1",
+      type: "customer.subscription.deleted",
+      data: {
+        object: {
+          id: "sub_123",
+          customer: "cus_123",
+          metadata: { business_id: "biz_123" },
+        },
+      },
+    });
+    const header = await sign(body, Math.floor(Date.now() / 1000), SECRET);
+
+    const event = await provider.verifyWebhook(body, header);
+    expect(event?.id).toBe("evt_cancel_1");
+    expect(event?.type).toBe("subscription_deleted");
+    expect(event?.businessId).toBe("biz_123");
+    expect(event?.status).toBe("canceled");
+  });
+
+  it("returns an 'unhandled' event for an event type the app doesn't act on, without throwing", async () => {
+    const provider = new StripeProvider();
+    const body = JSON.stringify({ id: "evt_unknown_1", type: "invoice.paid", data: { object: {} } });
+    const header = await sign(body, Math.floor(Date.now() / 1000), SECRET);
+
+    const event = await provider.verifyWebhook(body, header);
+    expect(event).not.toBeNull();
+    expect(event?.id).toBe("evt_unknown_1");
+    expect(event?.type).toBe("unhandled");
   });
 
   it("parses customer.subscription.updated and maps the price ID to a plan", async () => {
@@ -124,5 +159,87 @@ describe("StripeProvider.verifyWebhook", () => {
     const provider = new StripeProvider();
     const event = await provider.verifyWebhook("{}", "t=1,v1=abc");
     expect(event).toBeNull();
+  });
+});
+
+describe("StripeProvider.createCheckoutSession (checkout safety)", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("only ever uses the server-configured price ID for a plan, never a client-supplied one", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = SECRET;
+    process.env.STRIPE_PRICE_PRO = "price_pro_trusted";
+    const provider = new StripeProvider();
+
+    const originalFetch = global.fetch;
+    let capturedBody = "";
+    global.fetch = (async (_url: string, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? "");
+      return new Response(JSON.stringify({ url: "https://checkout.stripe.com/session" }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+
+    try {
+      await provider.createCheckoutSession({
+        businessId: "biz_1",
+        plan: "pro",
+        customerEmail: "kunde@example.com",
+        successUrl: "https://example.com/success",
+        cancelUrl: "https://example.com/cancel",
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    expect(capturedBody).toContain("price_pro_trusted");
+  });
+
+  it("returns ok:false instead of throwing when the network call to Stripe fails or times out", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = SECRET;
+    process.env.STRIPE_PRICE_PRO = "price_pro";
+    const provider = new StripeProvider();
+
+    const originalFetch = global.fetch;
+    global.fetch = (async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    }) as typeof fetch;
+
+    let result;
+    try {
+      result = await provider.createCheckoutSession({
+        businessId: "biz_1",
+        plan: "pro",
+        customerEmail: "kunde@example.com",
+        successUrl: "https://example.com/success",
+        cancelUrl: "https://example.com/cancel",
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("refuses to start checkout for a plan with no server-side price ID configured", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_x";
+    process.env.STRIPE_WEBHOOK_SECRET = SECRET;
+    delete process.env.STRIPE_PRICE_BUSINESS;
+    const provider = new StripeProvider();
+
+    const result = await provider.createCheckoutSession({
+      businessId: "biz_1",
+      plan: "business",
+      customerEmail: "kunde@example.com",
+      successUrl: "https://example.com/success",
+      cancelUrl: "https://example.com/cancel",
+    });
+
+    expect(result.ok).toBe(false);
   });
 });

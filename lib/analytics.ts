@@ -8,17 +8,23 @@ import { logger } from "@/lib/logger";
  * docs/SECURITY.md). Tracking darf niemals den eigentlichen Flow brechen:
  * Fehler werden geloggt, nie geworfen.
  */
+// Muss exakt mit der CHECK-Allowlist der Policy
+// `analytics_events_insert_public` in supabase/schema.sql uebereinstimmen.
 export const ANALYTICS_EVENTS = [
+  "landing_view",
   "signup",
   "onboarding_started",
   "onboarding_completed",
   "business_page_published",
+  "first_form_published",
   "lead_created",
+  "first_lead",
   "quote_created",
+  "first_quote",
   "quote_sent",
   "quote_viewed",
   "quote_accepted",
-  "appointment_created",
+  "appointment_booked",
   "lead_won",
   "trial_started",
   "checkout_started",
