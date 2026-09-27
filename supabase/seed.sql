@@ -48,7 +48,7 @@ begin
      'BMW 3er, starke Verschmutzung nach Umzug, gerne am Samstagvormittag.', 'new', now() - interval '2 hours'),
     (biz_autopflege, 'Julia Weber', 'julia.weber@example.com', '+49 171 2223344',
      'Lackversiegelung', current_date + 10, 'München-Sendling', '250-400 €',
-     'Neuwagen, moechte langfristigen Lackschutz.', 'in_progress', now() - interval '2 days'),
+     'Neuwagen, moechte langfristigen Lackschutz.', 'contacted', now() - interval '2 days'),
 
     (biz_reinigung, 'Café Sonnenschein GmbH', 'buero@cafe-sonnenschein-beispiel.de', '+49 30 3334455',
      'Büroreinigung wöchentlich', current_date + 3, 'Berlin-Kreuzberg', '200-300 € / Monat',
@@ -67,6 +67,16 @@ begin
 
     (biz_handwerk, 'Herr Kaya', 'kaya@example.com', '+49 175 8889900',
      'Badezimmer-Renovierung', current_date + 14, 'Hamburg-Altona', '3000-5000 €',
-     'Komplettsanierung eines 8 qm Bades, Fliesen und Sanitaer.', 'in_progress', now() - interval '3 days');
+     'Komplettsanierung eines 8 qm Bades, Fliesen und Sanitaer.', 'contacted', now() - interval '3 days');
+
+  insert into public.services (business_id, name, description, category, price, duration_minutes)
+  values
+    (biz_autopflege, 'Innen- und Aussenreinigung', 'Gruendliche Reinigung von Innenraum und Karosserie.', 'Reinigung', 89, 90),
+    (biz_autopflege, 'Lackversiegelung', 'Langfristiger Lackschutz inkl. Politur.', 'Versiegelung', 249, 180),
+    (biz_reinigung, 'Bueroreinigung (woechentlich)', 'Regelmaessige Unterhaltsreinigung fuer Bueroflaechen.', 'Gewerbe', 180, 120),
+    (biz_reinigung, 'Umzugs-Endreinigung', 'Uebergabefertige Reinigung inkl. Fenster.', 'Privat', 220, 240),
+    (biz_garten, 'Heckenschnitt', 'Fachgerechter Rueckschnitt inkl. Abtransport.', 'Pflege', 95, 90),
+    (biz_foto, 'Hochzeitsfotografie (Ganztag)', 'Begleitung von Vorbereitung bis Feier.', 'Hochzeit', 1200, 480),
+    (biz_handwerk, 'Badsanierung', 'Komplettsanierung nach Aufwand.', 'Renovierung', null, null);
 
 end $$;

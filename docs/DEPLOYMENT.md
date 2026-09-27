@@ -57,6 +57,15 @@ npm run cf:preview   # baut + startet lokal via wrangler (Workers-Runtime, nicht
    npx wrangler secret put NEXT_PUBLIC_SITE_URL
    npx wrangler secret put ADMIN_EMAILS
    ```
+   Optional, nur falls die Bezahlfunktion aktiv sein soll (siehe
+   `docs/BILLING.md`):
+   ```bash
+   npx wrangler secret put STRIPE_SECRET_KEY
+   npx wrangler secret put STRIPE_WEBHOOK_SECRET
+   npx wrangler secret put STRIPE_PRICE_STARTER
+   npx wrangler secret put STRIPE_PRICE_PRO
+   npx wrangler secret put STRIPE_PRICE_BUSINESS
+   ```
    Für lokale Entwicklung gegen die Workers-Runtime (`npm run cf:preview`)
    können dieselben Variablen in einer nicht committeten `.dev.vars`-Datei
    stehen (siehe `.gitignore` – `.dev.vars` ist bereits ausgeschlossen).
@@ -69,6 +78,10 @@ npm run cf:preview   # baut + startet lokal via wrangler (Workers-Runtime, nicht
 4. **Supabase-Redirect-URLs ergänzen:** Unter Authentication → URL
    Configuration die Produktions-URL (`https://<dein-worker>.workers.dev/auth/callback`
    bzw. deine Custom Domain) als erlaubte Redirect-URL eintragen.
+5. **Falls Stripe konfiguriert wurde:** im Stripe-Dashboard unter
+   Developers → Webhooks einen Endpunkt auf
+   `https://<deine-domain>/api/webhooks/stripe` anlegen (siehe
+   `docs/BILLING.md` für die genauen Events und das Signing-Secret).
 
 ## Datenbank-Migrationen
 
@@ -114,3 +127,6 @@ die vollständige Übersicht (Cloudflare-Dashboard-Rollback,
       den Seiten selbst)
 - [ ] Supabase Auth Rate Limits (Dashboard → Authentication → Rate
       Limits) für Produktionslast überprüft
+- [ ] Falls Stripe genutzt wird: Webhook-Endpunkt in Stripe angelegt,
+      `STRIPE_WEBHOOK_SECRET` gesetzt, Customer Portal im Stripe-Dashboard
+      aktiviert (siehe `docs/BILLING.md`)

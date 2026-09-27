@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Paperclip } from "lucide-react";
 import { getCurrentBusiness } from "@/lib/data/business";
 import { getLeadById, getQuotesForLead } from "@/lib/data/leads";
+import { getActivityForLead } from "@/lib/data/activity";
 import { createClient } from "@/lib/supabase/server";
+import { ActivityTimeline } from "@/components/dashboard/ActivityTimeline";
 import { Badge } from "@/components/ui/Card";
 import {
   formatDateDe,
@@ -13,6 +15,7 @@ import {
 } from "@/lib/format";
 import { getIndustry } from "@/lib/industries";
 import { StatusActions } from "@/components/dashboard/leads/StatusActions";
+import { PriorityPicker } from "@/components/dashboard/leads/PriorityPicker";
 import { ResponseGenerator } from "@/components/dashboard/leads/ResponseGenerator";
 import { ReminderPanel } from "@/components/dashboard/leads/ReminderPanel";
 import { QuoteForm } from "@/components/dashboard/leads/QuoteForm";
@@ -28,7 +31,10 @@ export default async function LeadDetailPage({
   if (!business) return null;
   if (!lead || lead.business_id !== business.id) notFound();
 
-  const quotes = await getQuotesForLead(lead.id);
+  const [quotes, activity] = await Promise.all([
+    getQuotesForLead(lead.id),
+    getActivityForLead(lead.id),
+  ]);
   const industry = getIndustry(business.industry);
 
   let attachmentUrl: string | null = null;
@@ -73,6 +79,7 @@ export default async function LeadDetailPage({
             {lead.service} · {industry.label}
           </p>
         </div>
+        <PriorityPicker leadId={lead.id} priority={lead.priority} />
       </div>
 
       <StatusActions leadId={lead.id} />
@@ -113,10 +120,19 @@ export default async function LeadDetailPage({
           )}
         </div>
 
-        <div className="card-surface p-6">
-          <h2 className="font-display text-lg font-semibold text-ink-950">Angebote</h2>
-          <div className="mt-4">
-            <QuoteList quotes={quotes} />
+        <div className="space-y-6">
+          <div className="card-surface p-6">
+            <h2 className="font-display text-lg font-semibold text-ink-950">Angebote</h2>
+            <div className="mt-4">
+              <QuoteList quotes={quotes} />
+            </div>
+          </div>
+
+          <div className="card-surface p-6">
+            <h2 className="font-display text-lg font-semibold text-ink-950">Aktivität</h2>
+            <div className="mt-4">
+              <ActivityTimeline events={activity} />
+            </div>
           </div>
         </div>
       </div>

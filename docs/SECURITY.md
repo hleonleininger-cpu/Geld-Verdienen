@@ -4,12 +4,13 @@ Dieses Dokument fasst die Sicherheitsmaßnahmen von AnfragePilot nach dem
 Production-Hardening-Pass zusammen: was geprüft wurde, was gefunden und
 behoben wurde, und was bewusst (noch) nicht umgesetzt ist.
 
-Hinweis zum Datenmodell: Die Aufgabenstellung dieses Passes nannte generisch
-Tabellen wie `business_members`, `customers`, `appointments`, `tasks`,
-`files`, `products`, `orders`, `subscriptions`, `notifications`. **Diese
-Tabellen existieren in AnfragePilot nicht** – das tatsächliche Schema hat
-nur `users`, `businesses`, `leads`, `quotes` (siehe `supabase/schema.sql`).
-Alles unten bezieht sich auf das echte Schema.
+Hinweis zum Datenmodell: Tabellen wie `business_members`, `customers`,
+`appointments`, `tasks`, `files`, `products`, `orders` existieren in
+AnfragePilot weiterhin **nicht** (bewusst nicht gebaute Features, siehe
+`docs/PROJECT_STATUS.md`). Seit der Produkt-Phase kamen dagegen echte neue
+Tabellen hinzu: `services`, `activity_events`, `notifications`,
+`referral_events`, `analytics_events` (siehe Abschnitt 1a). Alles unten
+bezieht sich auf das tatsächliche Schema in `supabase/schema.sql`.
 
 ## 1. Row Level Security (RLS)
 
@@ -67,6 +68,45 @@ gezielt daraufhin geprüft, ob sie eine neue Cross-Tenant-Lücke aufreißt:
   Checks tatsächlich schon abgesichert, da deren SELECT-Policies strikt
   auf den Owner beschränkt bleiben – der zusätzliche Check macht das aber
   explizit und robust gegen künftige Refactorings).
+
+## 1a. RLS für die Produkt-Phase (services, activity_events, notifications, referral_events, analytics_events)
+
+| Tabelle | SELECT | INSERT | UPDATE/DELETE |
+| --- | --- | --- | --- |
+| `services` | Owner sieht alle eigenen; `anon`+`authenticated` sehen nur `active = true` (für die Mini-Site) | nur eigenes Business | nur Owner |
+| `activity_events` | **nur Owner** – bewusst keine anon-Policy, auch kundenausgelöste Events (`quote_viewed` etc.) werden ausschließlich über die RPC `record_public_quote_event` eingefügt (SECURITY DEFINER, umgeht RLS) | nur Owner (für owner-initiierte Events wie `status_changed`) | – |
+| `notifications` | nur Owner | Owner-initiiert direkt; kundenausgelöste ebenfalls über `record_public_quote_event` | nur Owner (z. B. "als gelesen markieren") |
+| `referral_events` | Owner sieht nur Events zum **eigenen** `referral_code` | `anon`+`authenticated` dürfen ein Klick-/Signup-Event anlegen (`with check (true)`) | – |
+| `analytics_events` | **niemand** über PostgREST – bewusst keine SELECT-Policy, nicht einmal für den eigenen Owner (vermeidet unnötige Exposition von Produkt-Telemetrie); lesbar ausschließlich über den Service-Role-Client (`/admin`) | `anon`+`authenticated` dürfen inserten, aber nur mit einem `event_name` aus einer festen Allowlist (`CHECK`-Constraint in der Policy selbst) | – |
+
+**Oeffentlicher Angebots-Zugriff (`quotes`, Phase 4/5):** Ein Kunde liest
+und aktualisiert ein Angebot NIE direkt über `quotes`/`leads` (dafür gibt
+es keine anon-Policy) – ausschließlich über zwei eng gefasste
+`SECURITY DEFINER`-Funktionen, identifiziert über das zufällige
+`public_token` (nicht die fortlaufende `id`):
+
+- `get_public_quote(p_public_token)` – liest ein einzelnes Angebot inkl.
+  Kunden-/Business-Kontext als `jsonb`.
+- `record_public_quote_event(p_public_token, p_event)` – einziger Weg, wie
+  ein Kunde `viewed`/`accepted`/`declined` auslösen kann. Setzt
+  serverseitig durch: nur `sent`/`viewed` → `accepted`/`declined` (sonst
+  `raise exception 'invalid_transition'`), kein Handeln nach Ablauf von
+  `valid_until` (`raise exception 'expired'`, lazy statt Cron-basiert –
+  siehe `docs/MONETIZATION.md`), unbekanntes `p_event` wird abgelehnt.
+  Getestet in `supabase/tests/database/05_public_quote_portal.test.sql`.
+
+**Admin-Aggregation (`admin_funnel_counts`):** Ebenfalls `SECURITY
+DEFINER`, aber explizit `revoke ... from public` + `grant ... to
+service_role` – nur über den Service-Role-Client aufrufbar, nicht über
+`anon`/`authenticated` (anders als die beiden Quote-Funktionen oben, die
+bewusst öffentlich nutzbar sein müssen).
+
+**Anfrage-Erstellung als Trigger statt App-Code:** Ein neuer Lead erzeugt
+automatisch ein `activity_events`- und ein `notifications`-Row über den
+Trigger `log_lead_created_activity` (`SECURITY DEFINER`, an
+`public.leads` gehängt) – auch für den anonymen Insert über das
+öffentliche Formular, da Trigger-Funktionen mit den Rechten ihres
+Definers laufen, nicht des aufrufenden `anon`-Keys.
 
 ## 2. Autorisierung in Server Actions (nicht nur RLS)
 
@@ -161,12 +201,41 @@ auf Bucket-Ebene (harte Grenze, siehe Abschnitt 1) begrenzt.
   entstehen, sollte sie denselben Rate-Limit-Mechanismus (Tabelle + RPC
   oder eine generalisierte Variante davon) wiederverwenden.
 
+## 5a. Stripe-Webhook-Signaturprüfung
+
+`app/api/webhooks/stripe/route.ts` ist der einzige öffentlich erreichbare
+Endpunkt, der Daten von einem Drittanbieter entgegennimmt und daraufhin
+`businesses.plan`/`subscription_status` schreibt. Schutzmaßnahmen (siehe
+`lib/billing/stripe.ts::verifyWebhook`):
+
+- HMAC-SHA256-Signaturprüfung des exakten Rohbodys gegen
+  `STRIPE_WEBHOOK_SECRET` (Web-Crypto-API, `crypto.subtle`), Vergleich in
+  konstanter Zeit (`timingSafeEqualHex`) statt `===`.
+- Replay-Schutz: ein `Stripe-Signature`-Zeitstempel älter als 5 Minuten
+  wird abgelehnt.
+- Bei fehlender/ungültiger Signatur antwortet die Route mit `400`, OHNE
+  irgendetwas zu verarbeiten – es gibt keinen "vertraue trotzdem"-Pfad.
+- Ist Stripe nicht konfiguriert (keine Keys gesetzt), antwortet die Route
+  mit `200`/`not_configured` statt zu crashen oder ungeprüfte Daten
+  anzunehmen.
+
+Getestet in `tests/unit/stripeWebhook.test.ts` (gültige Signatur,
+manipulierter Body, falsches Secret, abgelaufener Zeitstempel, nicht
+konfigurierter Provider).
+
 ## 6. Secrets
 
 - `SUPABASE_SERVICE_ROLE_KEY` wird ausschließlich in
   `lib/supabase/admin.ts` gelesen, das ausschließlich von
-  `app/admin/page.tsx` (Server Component) importiert wird – kein
-  Client-Bundle-Pfad dorthin (geprüft per `grep` über das gesamte Repo).
+  `app/admin/page.tsx` (Server Component) und dem Stripe-Webhook
+  (`app/api/webhooks/stripe/route.ts`, kein Nutzer-Kontext vorhanden)
+  importiert wird – kein Client-Bundle-Pfad dorthin (geprüft per `grep`
+  über das gesamte Repo).
+- `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` sind wie
+  `SUPABASE_SERVICE_ROLE_KEY` reine Server-Env-Variablen (kein
+  `NEXT_PUBLIC_`-Präfix), gelesen ausschließlich in `lib/billing/stripe.ts`.
+  Beide sind optional – ohne sie ist die Bezahlfunktion inaktiv statt
+  unsicher (siehe `docs/BILLING.md`).
 - Alle `NEXT_PUBLIC_*`-Variablen sind bewusst öffentlich (Supabase-URL und
   `anon`-Key sind laut Supabase-Architektur dafür ausgelegt, öffentlich zu
   sein – RLS ist die eigentliche Grenze, nicht Geheimhaltung des Keys).
@@ -194,7 +263,19 @@ jemand die Next.js-App umgeht und direkt gegen PostgREST postet.
 `supabase/tests/database/*.test.sql` enthält pgTAP-Tests für Allow/Deny-
 Verhalten (Cross-Tenant-Isolation, WITH-CHECK-Regressionstests, Storage-
 Pfad-Validierung) nach dem von Supabase dokumentierten Muster
-(`tests.create_supabase_user`, `tests.authenticate_as`, …).
+(`tests.create_supabase_user`, `tests.authenticate_as`, …). Seit der
+Produkt-Phase zusätzlich:
+
+- `05_public_quote_portal.test.sql` – `get_public_quote`/
+  `record_public_quote_event` end-to-end: unbekanntes Token, Statuswechsel
+  `sent → viewed → accepted`, automatisches `lead.status = 'won'`,
+  abgelehnte Transition nach Annahme, abgelaufenes Angebot kann nicht mehr
+  angenommen werden, Timeline-/Notification-Erzeugung.
+- `06_product_phase_rls.test.sql` – `services` (öffentlich nur `active`),
+  `activity_events`/`notifications` (keine anon-Policy, kein
+  Fremdzugriff), `referral_events` (anon-Insert, Owner sieht nur eigenen
+  Code), `analytics_events` (Allowlist-`CHECK`, kein Fremd-Insert
+  akzeptiert).
 
 **Wichtiger Hinweis zur Ausführung:** Diese Tests wurden in der Sandbox,
 in der dieser Hardening-Pass entstand, **nicht ausgeführt** – `supabase

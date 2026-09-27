@@ -29,6 +29,9 @@ Kern-Domäne (Leads, Quotes, Businesses). Stattdessen:
   - `app/auth/callback/route.ts` – Supabase-Auth-Redirect-Ziel (Code-Exchange).
   - `app/dashboard/export/route.ts` – Datei-Download (JSON-Export, Server
     Actions können keine Downloads mit `Content-Disposition` ausliefern).
+  - `app/api/webhooks/stripe/route.ts` – einziger Server-zu-Server-Endpunkt
+    der App (Stripe kann keine Server Action aufrufen); siehe
+    `docs/BILLING.md`.
 
 Das hält die Angriffsfläche klein: Es gibt keinen zusätzlichen, separat zu
 pflegenden API-Vertrag, der aus dem Tritt geraten könnte.
@@ -75,6 +78,36 @@ DB-Flag `public.users.is_admin` ist die produktive Quelle der Wahrheit,
 laufen über einen Service-Role-Client, der ausschließlich serverseitig in
 `app/admin/page.tsx` verwendet wird.
 
+## Provider-Abstraktionen
+
+Zwei externe Integrationspunkte sind bewusst hinter einem Interface
+versteckt, damit ein Anbieterwechsel nie die Aufrufer ändert:
+
+- `lib/billing/` – `PaymentProvider` (Checkout, Customer Portal, Webhook-
+  Verifizierung), aktuell Stripe. Siehe `docs/BILLING.md`.
+- `lib/communication/` – `MessageProvider` (Nachrichtenversand),
+  aktuell nur `ClipboardProvider` (kopiert eine vorformulierte Nachricht,
+  versendet nichts aktiv). Siehe `docs/MONETIZATION.md`/`docs/BILLING.md`
+  für das analoge Muster.
+
+Ebenfalls zentral statt verstreut: `lib/entitlements.ts` (Plan-/Trial-/
+Feature-Gating, siehe `docs/MONETIZATION.md`) und `lib/analytics.ts`
+(Produkt-Funnel-Tracking, siehe `docs/PRODUCT_FLOWS.md`).
+
+## Öffentlicher Kunden-Zugriff ohne zusätzliche RLS-Policies
+
+Der öffentliche Angebots-Zugriff (`/q/[token]`, siehe
+`docs/PRODUCT_FLOWS.md`) und das öffentliche Anfrageformular sind die
+beiden Stellen, an denen ein anonymer Besucher mit der Datenbank
+interagiert. Statt dafür `quotes`/`leads`/`activity_events` mit
+zusätzlichen (fehleranfälligen) anon-RLS-Policies zu öffnen, laufen diese
+Zugriffe ausschließlich über eng gefasste `SECURITY DEFINER`-
+Postgres-Funktionen (`get_public_quote`, `record_public_quote_event`,
+`check_and_record_lead_attempt`) bzw. einen `SECURITY DEFINER`-Trigger
+(`log_lead_created_activity`), identifiziert über ein zufälliges
+`public_token` statt einer fortlaufenden `id`. Details je Funktion in
+`supabase/schema.sql`.
+
 ## Rate-Limiting
 
 Das öffentliche Anfrageformular ist über eine Postgres-Tabelle +
@@ -102,12 +135,20 @@ docs/                   Diese Dokumentation
 
 ## Bekannte architektonische Grenzen
 
-- Kein Mehrbenutzer-/Rollenmodell pro Business (nur 1 Owner).
-- Keine echte Zahlungsintegration (Preis-/Shop-Seiten sind UI-Vorschauen).
+- Kein Mehrbenutzer-/Rollenmodell pro Business (nur 1 Owner) – `services`,
+  `quotes` etc. sind konsequent auf `owner_id` statt auf Teammitglieder
+  ausgelegt.
+- Shop-Checkout ist weiterhin nur eine Produktdarstellung ohne echten Kauf
+  (bewusst nicht Teil der Produkt-Phase).
+- Kalender/Termine, ein individueller Formular-Builder und Team-Mitglieder
+  existieren nicht – die zugehörigen Plan-Feature-Flags in
+  `lib/entitlements.ts` sind vorbereitet, gaten aber aktuell nichts Reales
+  (siehe `docs/MONETIZATION.md`).
 - `proxy.ts` läuft unter Cloudflare im als "experimentell" markierten
   Node.js-Middleware-Modus von `@opennextjs/cloudflare` (siehe oben).
-- Admin-Auswertungen (`/admin`) tallyen Branchen clientseitig aus einer
-  ungefilterten `select("industry")`-Abfrage – für die aktuelle,
-  MVP-typische Datenmenge unkritisch, bei sehr vielen Businesses
-  (>> 10.000) wäre eine SQL-seitige `GROUP BY`-Auswertung (View oder RPC)
-  performanter.
+- Admin-Auswertungen (`/admin`) tallyen die Branchen-Verteilung weiterhin
+  clientseitig aus einer ungefilterten `select("industry")`-Abfrage – für
+  die aktuelle, MVP-typische Datenmenge unkritisch. Der Aktivierungs-Funnel
+  selbst nutzt dagegen bereits eine einzige SQL-Aggregat-Funktion
+  (`admin_funnel_counts`, nach `event_name` gruppiert) statt elf
+  Einzel-Zähl-Queries.

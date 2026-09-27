@@ -2,8 +2,14 @@ import Link from "next/link";
 import { Bell, ChevronLeft, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/ui/Card";
 import { LeadListItem } from "@/components/dashboard/LeadListItem";
+import { ActivationChecklistCard } from "@/components/dashboard/ActivationChecklist";
+import { TrialBanner } from "@/components/dashboard/TrialBanner";
+import { UsageMeter } from "@/components/dashboard/UsageMeter";
+import { PlanBadge } from "@/components/dashboard/PlanBadge";
 import { getCurrentBusiness } from "@/lib/data/business";
 import { getLeadsPage, getDashboardStats, getUpcomingReminders } from "@/lib/data/leads";
+import { getActivationChecklist } from "@/lib/activation";
+import { getEffectivePlanInfo, getLeadQuota } from "@/lib/entitlements";
 import { formatCurrencyEUR, formatDateTimeDe, STATUS_LABELS, STATUS_ORDER } from "@/lib/format";
 import type { LeadStatus } from "@/types/database";
 
@@ -25,6 +31,14 @@ export default async function DashboardPage({
     getUpcomingReminders(business.id, 5),
   ]);
 
+  const checklist = await getActivationChecklist(business, {
+    leadCount: stats.totalCount,
+    wonCount: stats.statusCounts.won,
+  });
+
+  const planInfo = getEffectivePlanInfo(business);
+  const leadQuota = await getLeadQuota(business);
+
   const totalPages = Math.max(1, Math.ceil(leadsPage.total / leadsPage.pageSize));
   const pageHref = (targetPage: number) => {
     const params = new URLSearchParams();
@@ -36,18 +50,30 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-ink-950">Übersicht</h1>
-        <p className="mt-1 text-sm text-ink-500">
-          Willkommen zurück, {business.business_name}.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-2xl font-semibold text-ink-950">Übersicht</h1>
+            <PlanBadge plan={planInfo.plan} isTrialing={planInfo.isTrialing} />
+          </div>
+          <p className="mt-1 text-sm text-ink-500">
+            Willkommen zurück, {business.business_name}.
+          </p>
+        </div>
       </div>
+
+      <TrialBanner planInfo={planInfo} />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Neue Anfragen" value={stats.newCount} />
         <StatCard label="Offene Anfragen" value={stats.openCount} />
         <StatCard label="Antworten ausstehend" value={stats.pendingReplyCount} />
         <StatCard label="Geschätzter Anfragewert" value={formatCurrencyEUR(stats.estimatedValue)} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <ActivationChecklistCard checklist={checklist} />
+        <UsageMeter quota={leadQuota} />
       </div>
 
       {reminders.length > 0 && (

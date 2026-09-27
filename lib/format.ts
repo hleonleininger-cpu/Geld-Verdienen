@@ -1,4 +1,4 @@
-import type { LeadStatus } from "@/types/database";
+import type { LeadStatus, LeadPriority, QuoteStatus } from "@/types/database";
 
 export function formatDateDe(value: string | null | undefined): string {
   if (!value) return "flexibel";
@@ -67,26 +67,62 @@ export function formatCurrencyEUR(value: number | null | undefined): string {
 
 export const STATUS_LABELS: Record<LeadStatus, string> = {
   new: "Neu",
-  in_progress: "In Bearbeitung",
+  contacted: "Kontaktiert",
+  qualified: "Qualifiziert",
   quote_sent: "Angebot gesendet",
+  negotiating: "In Verhandlung",
   won: "Gewonnen",
   lost: "Verloren",
 };
 
 export const STATUS_ORDER: LeadStatus[] = [
   "new",
-  "in_progress",
+  "contacted",
+  "qualified",
   "quote_sent",
+  "negotiating",
   "won",
   "lost",
 ];
 
 export const STATUS_BADGE_CLASSES: Record<LeadStatus, string> = {
   new: "bg-brand-100 text-brand-700",
-  in_progress: "bg-amber-100 text-amber-700",
+  contacted: "bg-amber-100 text-amber-700",
+  qualified: "bg-violet-100 text-violet-700",
   quote_sent: "bg-sky-100 text-sky-700",
+  negotiating: "bg-orange-100 text-orange-700",
   won: "bg-brand-600 text-white",
   lost: "bg-ink-100 text-ink-500",
+};
+
+export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
+  draft: "Entwurf",
+  sent: "Gesendet",
+  viewed: "Angesehen",
+  accepted: "Angenommen",
+  declined: "Abgelehnt",
+  expired: "Abgelaufen",
+};
+
+export const QUOTE_STATUS_BADGE_CLASSES: Record<QuoteStatus, string> = {
+  draft: "bg-ink-100 text-ink-500",
+  sent: "bg-sky-100 text-sky-700",
+  viewed: "bg-amber-100 text-amber-700",
+  accepted: "bg-brand-600 text-white",
+  declined: "bg-red-100 text-red-700",
+  expired: "bg-ink-100 text-ink-400",
+};
+
+export const PRIORITY_LABELS: Record<LeadPriority, string> = {
+  low: "Niedrig",
+  medium: "Mittel",
+  high: "Hoch",
+};
+
+export const PRIORITY_BADGE_CLASSES: Record<LeadPriority, string> = {
+  low: "bg-ink-100 text-ink-500",
+  medium: "bg-sky-100 text-sky-700",
+  high: "bg-red-100 text-red-700",
 };
 
 export function parseBudget(budget: string | null | undefined): number {
@@ -95,6 +131,18 @@ export function parseBudget(budget: string | null | undefined): number {
   if (!numbers || numbers.length === 0) return 0;
   const parsed = numbers.map((n) => parseFloat(n.replace(",", ".")));
   return parsed.reduce((a, b) => a + b, 0) / parsed.length;
+}
+
+/**
+ * Liefert einen ISO-Zeitstempel `days` Tage in der Vergangenheit (oder
+ * `null` fuer "kein Startdatum" = gesamter Zeitraum). Ausgelagert in eine
+ * eigene Funktion, damit Server Components (z. B. /admin) den impuren
+ * `Date.now()`-Aufruf nicht direkt in ihrem Funktionskörper stehen haben
+ * (react-hooks/purity-Lint-Regel).
+ */
+export function daysAgoIso(days: number | null): string | null {
+  if (days === null) return null;
+  return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
 export function slugify(input: string): string {

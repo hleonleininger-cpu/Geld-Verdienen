@@ -1,5 +1,5 @@
 export interface PricingPlan {
-  key: "free" | "starter" | "pro";
+  key: "free" | "starter" | "pro" | "business";
   name: string;
   price: string;
   priceNote: string;
@@ -47,10 +47,25 @@ export const PRICING_PLANS: PricingPlan[] = [
     description: "Für Teams und Betriebe mit hohem Anfragevolumen.",
     features: [
       "Alles aus Starter",
-      "Mehrere Teammitglieder (bald verfügbar)",
+      "Erweiterte Auswertungen",
+      "Kalender (bald verfügbar)",
       "Priorisierter Support",
-      "Erweiterte Auswertungen (bald verfügbar)",
     ],
     cta: "Pro wählen",
+    highlighted: true,
+  },
+  {
+    key: "business",
+    name: "Business",
+    price: "39 €",
+    priceNote: "/ Monat",
+    description: "Für wachsende Betriebe mit mehreren Mitarbeitenden.",
+    features: [
+      "Alles aus Pro",
+      "Mehrere Teammitglieder (bald verfügbar)",
+      "Erweitertes Speicherlimit",
+      "Persönlicher Ansprechpartner",
+    ],
+    cta: "Business wählen",
   },
 ];

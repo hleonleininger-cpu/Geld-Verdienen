@@ -47,22 +47,26 @@ describe("reminderSchema", () => {
 });
 
 describe("quoteSchema", () => {
+  const validLineItems = [{ description: "Badsanierung", quantity: 1, unit_price: 4200 }];
+
   it("accepts a valid quote", () => {
     const result = quoteSchema.safeParse({
       lead_id: LEAD_ID,
       title: "Badsanierung Komplett",
       description: "",
-      price: 4200,
+      line_items: validLineItems,
+      discount_amount: 0,
+      tax_rate: 19,
       valid_until: "2026-12-31",
     });
     expect(result.success).toBe(true);
   });
 
-  it("rejects a negative price", () => {
+  it("rejects a negative unit price", () => {
     const result = quoteSchema.safeParse({
       lead_id: LEAD_ID,
       title: "Test",
-      price: -10,
+      line_items: [{ description: "Test", quantity: 1, unit_price: -10 }],
       valid_until: "",
     });
     expect(result.success).toBe(false);
@@ -72,17 +76,38 @@ describe("quoteSchema", () => {
     const result = quoteSchema.safeParse({
       lead_id: LEAD_ID,
       title: "",
-      price: 100,
+      line_items: validLineItems,
       valid_until: "",
     });
     expect(result.success).toBe(false);
   });
 
-  it("rejects an unrealistically high price", () => {
+  it("rejects an unrealistically high unit price", () => {
     const result = quoteSchema.safeParse({
       lead_id: LEAD_ID,
       title: "Test",
-      price: 10_000_000,
+      line_items: [{ description: "Test", quantity: 1, unit_price: 10_000_000 }],
+      valid_until: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an empty line-items array (at least one position is required)", () => {
+    const result = quoteSchema.safeParse({
+      lead_id: LEAD_ID,
+      title: "Test",
+      line_items: [],
+      valid_until: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a tax rate above 100%", () => {
+    const result = quoteSchema.safeParse({
+      lead_id: LEAD_ID,
+      title: "Test",
+      line_items: validLineItems,
+      tax_rate: 150,
       valid_until: "",
     });
     expect(result.success).toBe(false);

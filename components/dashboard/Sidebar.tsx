@@ -2,16 +2,37 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, User, ExternalLink, LogOut } from "lucide-react";
+import {
+  LayoutGrid,
+  User,
+  ExternalLink,
+  LogOut,
+  Kanban,
+  FileText,
+  Wrench,
+  CreditCard,
+  Bell,
+} from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { signOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/cn";
 
-export function Sidebar({ slug }: { slug: string }) {
+export function Sidebar({ slug, unreadCount = 0 }: { slug: string; unreadCount?: number }) {
   const pathname = usePathname();
 
   const links = [
     { href: "/dashboard", label: "Übersicht", icon: LayoutGrid, exact: true },
+    { href: "/dashboard/leads", label: "Anfragen", icon: Kanban, exact: false },
+    { href: "/dashboard/quotes", label: "Angebote", icon: FileText, exact: false },
+    { href: "/dashboard/services", label: "Leistungen", icon: Wrench, exact: false },
+    {
+      href: "/dashboard/notifications",
+      label: "Benachrichtigungen",
+      icon: Bell,
+      exact: false,
+      badge: unreadCount,
+    },
+    { href: "/dashboard/billing", label: "Abrechnung", icon: CreditCard, exact: false },
     { href: "/dashboard/profile", label: "Profil", icon: User, exact: false },
   ];
 
@@ -39,6 +60,11 @@ export function Sidebar({ slug }: { slug: string }) {
             >
               <link.icon className="h-4 w-4" strokeWidth={1.75} />
               {link.label}
+              {"badge" in link && link.badge ? (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-semibold text-white">
+                  {link.badge > 9 ? "9+" : link.badge}
+                </span>
+              ) : null}
             </Link>
           );
         })}

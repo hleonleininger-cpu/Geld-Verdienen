@@ -172,7 +172,7 @@ export function PricingPreview() {
             Alle Details ansehen →
           </ButtonLink>
         </div>
-        <div className="mt-10 grid gap-6 sm:grid-cols-3">
+        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {PRICING_PLANS.map((plan) => (
             <PricingCard key={plan.key} plan={plan} />
           ))}

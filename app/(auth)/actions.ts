@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { safeRedirectTarget } from "@/lib/safeRedirect";
+import { track } from "@/lib/analytics";
 
 export type AuthActionState = { error?: string; message?: string } | null;
 
@@ -54,7 +55,7 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${siteUrl()}/auth/callback?next=/dashboard` },
+    options: { emailRedirectTo: `${siteUrl()}/auth/callback?next=/onboarding` },
   });
 
   if (error) {
@@ -65,11 +66,15 @@ export async function signUp(
     return { error: "Registrierung fehlgeschlagen: " + error.message };
   }
 
+  if (data.user) {
+    await track("signup", { userId: data.user.id });
+  }
+
   // Wenn Supabase E-Mail-Bestätigung deaktiviert hat, existiert bereits
   // eine Session und wir können direkt weiterleiten.
   if (data.session) {
     revalidatePath("/", "layout");
-    redirect("/dashboard");
+    redirect("/onboarding");
   }
 
   return {

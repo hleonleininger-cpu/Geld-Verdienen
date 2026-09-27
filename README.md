@@ -2,15 +2,22 @@
 
 AnfragePilot ist ein Mini-SaaS für kleine lokale Dienstleistungsunternehmen
 (Autopflege, Reinigung, Gartenservice, Fotografie, Handwerk). Kunden stellen
-über eine öffentliche Anfrageseite Anfragen, der Unternehmer sammelt sie in
-einem Dashboard, beantwortet sie mit vorgefertigten Textbausteinen und
-erstellt daraus Angebote.
+über eine öffentliche Mini-Site Anfragen, der Unternehmer sammelt sie in
+einer visuellen Pipeline, beantwortet sie mit vorgefertigten Textbausteinen
+und erstellt daraus Angebote, die der Kunde online annehmen oder ablehnen
+kann – der volle Funnel von **Besucher → Registrierung → Onboarding →
+erste Anfrage → erstes Angebot → erster Kunde → bezahlter Plan**.
 
-Nach dem initialen MVP wurde ein vollständiger **Production-Hardening-Pass**
-durchgeführt (Sicherheit, Autorisierung, Datenqualität, Tests, SEO,
-Deployment-Architektur). Details dazu in `docs/PROJECT_STATUS.md`. Stellen,
-an denen bewusst noch keine echte Integration existiert (Zahlungen, externe
-KI), sind im Code und in dieser README klar gekennzeichnet.
+Nach dem initialen MVP und einem Production-Hardening-Pass wurde eine
+**Produkt-Phase** umgesetzt: Onboarding-Wizard, Aktivierungs-Checkliste,
+Lead-Pipeline (Kanban + Liste), voller Angebots-Workflow mit öffentlichem
+Kunden-Portal, Timeline, Benachrichtigungen, Plan-/Trial-/Feature-Gating,
+eine Stripe-basierte Abrechnung, Referrals sowie Produkt-Analytics mit
+Admin-Wachstums-Dashboard. Details dazu in `docs/PROJECT_STATUS.md`.
+Stellen, an denen bewusst noch keine echte Integration existiert oder ein
+Feature bewusst nicht in vollem Umfang gebaut wurde (z. B. Kalender,
+Team-Mitglieder, Shop-Checkout), sind im Code und in dieser README klar
+gekennzeichnet.
 
 **Weiterführende Dokumentation:**
 
@@ -19,6 +26,9 @@ KI), sind im Code und in dieser README klar gekennzeichnet.
 - [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) – Deployment-Anleitung
 - [`docs/DEPLOYMENT_ARCHITECTURE.md`](./docs/DEPLOYMENT_ARCHITECTURE.md) – Entscheidung Cloudflare Workers vs. Pages/vinext
 - [`docs/PROJECT_STATUS.md`](./docs/PROJECT_STATUS.md) – was zuletzt gemacht wurde, was noch offen ist
+- [`docs/PRODUCT_FLOWS.md`](./docs/PRODUCT_FLOWS.md) – der Aktivierungs-Funnel Schritt für Schritt, mit Dateiverweisen
+- [`docs/MONETIZATION.md`](./docs/MONETIZATION.md) – Pläne, Trial-Logik, was Feature-Gating tatsächlich durchsetzt
+- [`docs/BILLING.md`](./docs/BILLING.md) – Stripe-Integration, Webhook-Setup, `PaymentProvider`-Abstraktion
 
 ## Tech-Stack
 
@@ -40,40 +50,62 @@ basiert auf einem selbst gebauten Template-System (siehe
 
 | Funktion | Status |
 | --- | --- |
-| Landingpage, Preis-Seite, Shop | ✅ vollständig |
+| Landingpage, Preis-Seite (4 Pläne), Shop | ✅ vollständig |
 | Registrierung / Login / Logout / Passwort zurücksetzen | ✅ vollständig (Supabase Auth) |
-| Öffentliche Anfrageseite `/[businessSlug]` inkl. Datei-Upload | ✅ vollständig, inkl. Rate-Limiting |
-| Dashboard mit Kennzahlen, Status-Filter, Paginierung | ✅ vollständig |
-| Lead-Detailseite, Status ändern, Erinnerungen | ✅ vollständig |
+| Onboarding-Wizard (10 Schritte, resumable, idempotent) | ✅ vollständig |
+| Aktivierungs-Checkliste im Dashboard | ✅ vollständig |
+| Öffentliche Mini-Site `/[businessSlug]` (Hero, Leistungen, Galerie, Öffnungszeiten, FAQ, Anfrageformular) | ✅ vollständig, inkl. Rate-Limiting, Publish/Unpublish |
+| Lead-Pipeline (Kanban + Liste, Drag & Drop, Filter/Suche/Priorität) | ✅ vollständig |
+| Lead-Detailseite, Status ändern, Erinnerungen, Timeline | ✅ vollständig |
 | Antwortgenerator (Template-basiert, 4 Tonalitäten) | ✅ vollständig, ohne externe KI |
+| Angebots-Workflow (Entwurf/Versendet/Angesehen/Angenommen/Abgelehnt/Abgelaufen) | ✅ vollständig, inkl. öffentlichem Kunden-Portal `/q/[token]` |
 | Angebotsgenerator + PDF-Export | ✅ vollständig (Export über den Browser-Druckdialog "Als PDF speichern") |
+| Kommunikations-Vorlagen (Angebots-Nachricht zum Kopieren) | ✅ vollständig; echter Versand (E-Mail/SMS/WhatsApp) ist als `MessageProvider`-Interface vorbereitet, aber noch nicht angeschlossen |
+| Benachrichtigungs-Center | ✅ vollständig |
 | Branchen-Vorlagen (5 Branchen) | ✅ vollständig |
-| Admin-Bereich (DB-gestützte Autorisierung) | ✅ Basis-Auswertungen (Anzahl Unternehmen/Leads, letzte Registrierungen, Branchen-Verteilung) |
+| Plan-/Trial-/Feature-Gating (zentrale Entitlement-Schicht) | ✅ Kernlogik (Lead-Limit, Branding, erweiterte Auswertungen) durchgesetzt – siehe `docs/MONETIZATION.md` für was ehrlich (noch) nicht gated wird |
+| Bezahlfunktion (Free/Starter/Pro/Business) | ✅ Stripe-Checkout + Customer Portal + Webhooks, **nur aktiv wenn Stripe-Keys konfiguriert sind** – siehe `docs/BILLING.md` |
+| Referral-Tracking | ✅ Codes, Klicks/Registrierungen, eigene Statistik im Profil |
+| Produkt-Analytics + Admin-Wachstums-Dashboard | ✅ Funnel-Metriken mit Zeitraum-Filter (7/30/90/gesamt) |
+| Admin-Bereich (DB-gestützte Autorisierung) | ✅ Wachstums-Funnel, Kennzahlen, letzte Registrierungen, Branchen-Verteilung |
 | Daten-Export, Unternehmens-/Konto-Löschung | ✅ vollständig (`/dashboard/profile` → "Gefahrenzone") |
 | Datenschutz-/AGB-Seiten | ⚠️ technisches Gerüst mit Platzhaltern, keine Rechtsberatung |
-| Bezahlfunktion (Free/Starter/Pro) | ⚠️ **nur UI**, keine echte Zahlungsintegration |
-| Shop-Checkout | ⚠️ **nur Produktdarstellung**, kein echter Kauf |
-| Mehrere Teammitglieder pro Unternehmen | ❌ noch nicht implementiert (in der Pro-Preisliste als "bald verfügbar" gekennzeichnet) |
+| Shop-Checkout | ⚠️ **nur Produktdarstellung**, kein echter Kauf (bewusst nicht Teil dieser Phase) |
+| Kalender/Termine, mehrere Teammitglieder, individueller Formular-Builder | ❌ noch nicht implementiert – Entitlement-Flags dafür existieren bereits (siehe `lib/entitlements.ts`), gaten aber aktuell nichts Reales |
+| Demo-Modus (isolierter Sandbox-Klon) | ❌ nicht gebaut (bewusst nicht Teil dieser Phase) |
 
 ## Projektstruktur
 
 ```
 app/
   page.tsx                 Landingpage
-  pricing/                 Preis-Seite
+  pricing/                 Preis-Seite (4 Pläne)
   shop/                    Shop (Übersicht + Detailseiten)
-  [businessSlug]/          Öffentliche Anfrageseite pro Unternehmen
+  [businessSlug]/          Öffentliche Mini-Site pro Unternehmen (Hero/Leistungen/Galerie/FAQ/Formular)
+  q/[token]/               Öffentliches Kunden-Portal für ein Angebot (annehmen/ablehnen)
   (auth)/                  Login, Registrierung, Passwort zurücksetzen
   auth/callback/           Supabase-Auth-Callback (E-Mail-Bestätigung, Reset)
-  dashboard/               Geschütztes Dashboard (Übersicht, Leads, Profil, Export, Löschung)
+  onboarding/              10-Schritte-Wizard nach der Registrierung
+  dashboard/               Geschütztes Dashboard
+    leads/                 Pipeline (Kanban + Liste) + Lead-Detailseite
+    quotes/                Zentrale Angebotsübersicht
+    services/              Leistungskatalog (CRUD)
+    notifications/         Benachrichtigungs-Center
+    billing/               Plan-Übersicht + Stripe-Checkout/-Portal
+    profile/               Profil, Öffnungszeiten, Galerie, Empfehlungen, Gefahrenzone
   quotes/[quoteId]/        Druckbare Angebotsansicht ("Als PDF speichern")
-  admin/                   Interner Admin-Bereich (DB-gestützte Autorisierung)
+  api/webhooks/stripe/     Stripe-Webhook (einzige Quelle der Wahrheit für Plan/Abo-Status)
+  admin/                   Interner Admin-Bereich (Wachstums-Funnel, DB-gestützte Autorisierung)
   datenschutz/, agb/       Rechtliche Seiten (Platzhalter, siehe Hinweis auf den Seiten)
   robots.ts, sitemap.ts    SEO-Dateien
 components/                UI-Bausteine, Dashboard- und Marketing-Komponenten
 lib/                       Domänenlogik: Supabase-Clients, Validierung, Formatierung, Templates
   data/                    Read-Pfade für Server Components
   supabase/                Client-Factories (browser/server/middleware/admin)
+  billing/                 `PaymentProvider`-Abstraktion + Stripe-Implementierung
+  communication/           `MessageProvider`-Abstraktion + Vorlagen (Copy-to-Clipboard)
+  entitlements.ts          Zentrale Plan-/Trial-/Feature-Gating-Logik
+  analytics.ts             Produkt-Funnel-Tracking (`track()`)
 supabase/
   schema.sql               Konsolidiertes DB-Schema für Fresh-Installs
   migrations/               Inkrementelle Schema-Änderungen (Historie)
@@ -81,7 +113,7 @@ supabase/
   tests/database/           pgTAP-RLS-Tests
 tests/unit/                 Vitest-Unit-Tests
 types/database.ts          TypeScript-Typen für die Datenbanktabellen
-docs/                       Architektur-/Security-/Deployment-Dokumentation
+docs/                       Architektur-/Security-/Deployment-/Produkt-Dokumentation
 ```
 
 ## Datenmodell
@@ -92,16 +124,28 @@ die RLS-Policy-Übersicht je Tabelle. Kurzüberblick:
 
 - **users** – Spiegel von `auth.users` (kein eigenes Passwort-Handling),
   plus `is_admin`-Flag für die Admin-Autorisierung
-- **businesses** – ein Unternehmen pro `owner_id`, mit öffentlichem `slug`
-- **leads** – Kundenanfragen, referenzieren ein `business_id`
-- **quotes** – Angebote, referenzieren ein `lead_id`
+- **businesses** – ein Unternehmen pro `owner_id`, mit öffentlichem `slug`,
+  Plan-/Trial-/Stripe-Feldern, `opening_hours`/`gallery_urls`, `published`
+- **services** – Leistungskatalog eines Unternehmens (öffentlich lesbar,
+  nur aktive)
+- **leads** – Kundenanfragen, referenzieren ein `business_id`, mit
+  `status`/`priority` für die Pipeline
+- **quotes** – Angebote mit Positionen (`line_items`), Statuswechsel
+  (Entwurf → Versendet → Angesehen → Angenommen/Abgelehnt/Abgelaufen) und
+  einem separaten `public_token` für den Kunden-Zugriff
+- **activity_events** / **notifications** – Timeline und
+  Owner-Benachrichtigungen
+- **referral_events** / **analytics_events** – Wachstums-Tracking, nur über
+  den Service-Role-Client (Admin) lesbar
 - **lead_submission_attempts** – interne Tabelle fürs Rate-Limiting (nicht
   über PostgREST erreichbar, nur über eine `SECURITY DEFINER`-Funktion)
 
 Storage-Buckets:
 
-- `logos` – öffentlich lesbar (für die Anfrageseite), nur der Owner darf
+- `logos` – öffentlich lesbar (für die Mini-Site), nur der Owner darf
   schreiben, Größen-/Typ-Limit auf Bucket-Ebene
+- `gallery` – öffentlich lesbar (bis zu 8 Bilder pro Business für die
+  Mini-Site), nur der Owner darf schreiben/löschen
 - `lead-attachments` – privat, nur der jeweilige Unternehmer darf lesen,
   Upload nur unter einer existierenden `business_id`, Größen-/Typ-Limit auf
   Bucket-Ebene
@@ -159,6 +203,11 @@ Trage in `.env` deine Werte aus **Supabase → Settings → API** ein
 (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`) sowie optional deine eigene E-Mail-Adresse in
 `ADMIN_EMAILS` als Bootstrap-Fallback für `/admin`.
+
+Die `STRIPE_*`-Variablen sind **optional**: ohne sie läuft die App normal,
+`/dashboard/billing` zeigt dann lediglich einen "nicht eingerichtet"-Hinweis
+statt eines funktionierenden Checkouts. Siehe
+[`docs/BILLING.md`](./docs/BILLING.md) für die Einrichtung.
 
 ### 4. Installieren & starten
 

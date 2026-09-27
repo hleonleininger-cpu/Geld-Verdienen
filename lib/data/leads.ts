@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { parseBudget } from "@/lib/format";
-import type { LeadRow, LeadStatus, QuoteRow } from "@/types/database";
+import type { LeadRow, LeadStatus, LeadPriority, QuoteRow } from "@/types/database";
 
 export const LEADS_PAGE_SIZE = 20;
 
@@ -34,6 +34,47 @@ export async function getLeadsPage(
 
   const { data, count } = await query;
   return { leads: data ?? [], total: count ?? 0, page, pageSize };
+}
+
+export interface PipelineFilters {
+  search?: string;
+  priority?: LeadPriority;
+  sort?: "newest" | "oldest";
+}
+
+/**
+ * Alle Leads eines Business fuer die Pipeline-Ansicht (Kanban + Liste,
+ * Phase 7) – im Gegensatz zu `getLeadsPage` NICHT nach Status gefiltert
+ * (die Kanban-Spalten zeigen alle Status gleichzeitig) und nicht seitenweise
+ * paginiert, dafuer mit einer harten Obergrenze, damit ein Business mit
+ * sehr vielen Leads die Seite nicht unbegrenzt aufblaeht.
+ */
+const PIPELINE_MAX_LEADS = 500;
+
+export async function getLeadsForPipeline(
+  businessId: string,
+  filters: PipelineFilters = {}
+): Promise<LeadRow[]> {
+  const supabase = await createClient();
+  let query = supabase
+    .from("leads")
+    .select("*")
+    .eq("business_id", businessId)
+    .order("created_at", { ascending: filters.sort === "oldest" })
+    .limit(PIPELINE_MAX_LEADS);
+
+  if (filters.search) {
+    const term = filters.search.replace(/[%,]/g, "").trim();
+    if (term) {
+      query = query.or(`customer_name.ilike.%${term}%,service.ilike.%${term}%`);
+    }
+  }
+  if (filters.priority) {
+    query = query.eq("priority", filters.priority);
+  }
+
+  const { data } = await query;
+  return data ?? [];
 }
 
 export type UpcomingReminder = Pick<
@@ -77,6 +118,36 @@ export async function getQuotesForLead(leadId: string): Promise<QuoteRow[]> {
   return data ?? [];
 }
 
+export type QuoteWithCustomer = QuoteRow & { customer_name: string };
+
+/**
+ * Liste aller Angebote eines Business fuer die zentrale Angebotsuebersicht
+ * (`/dashboard/quotes`). Quotes haben keine eigene `business_id`-Spalte,
+ * daher zuerst die Lead-IDs des Business laden und darueber filtern –
+ * RLS (`quotes_select_own_business`) ist ohnehin die harte Grenze, das
+ * hier ist nur fuer eine sinnvolle Query-Reihenfolge.
+ */
+export async function getQuotesForBusiness(businessId: string): Promise<QuoteWithCustomer[]> {
+  const supabase = await createClient();
+  const { data: leads } = await supabase
+    .from("leads")
+    .select("id, customer_name")
+    .eq("business_id", businessId);
+  if (!leads || leads.length === 0) return [];
+
+  const leadNameById = new Map(leads.map((l) => [l.id, l.customer_name]));
+  const { data: quotes } = await supabase
+    .from("quotes")
+    .select("*")
+    .in("lead_id", leads.map((l) => l.id))
+    .order("created_at", { ascending: false });
+
+  return (quotes ?? []).map((q) => ({
+    ...q,
+    customer_name: leadNameById.get(q.lead_id) ?? "-",
+  }));
+}
+
 export interface DashboardStats {
   newCount: number;
   openCount: number;
@@ -107,8 +178,10 @@ export async function getDashboardStats(businessId: string): Promise<DashboardSt
 export function computeStats(leads: StatsRow[]): DashboardStats {
   const statusCounts: Record<LeadStatus, number> = {
     new: 0,
-    in_progress: 0,
+    contacted: 0,
+    qualified: 0,
     quote_sent: 0,
+    negotiating: 0,
     won: 0,
     lost: 0,
   };
@@ -116,8 +189,10 @@ export function computeStats(leads: StatsRow[]): DashboardStats {
     statusCounts[lead.status] += 1;
   }
 
-  const openCount = statusCounts.new + statusCounts.in_progress + statusCounts.quote_sent;
-  const pendingReplyCount = statusCounts.new + statusCounts.in_progress;
+  const openCount =
+    statusCounts.new + statusCounts.contacted + statusCounts.qualified +
+    statusCounts.quote_sent + statusCounts.negotiating;
+  const pendingReplyCount = statusCounts.new + statusCounts.contacted;
   const estimatedValue = leads
     .filter((l) => l.status !== "lost")
     .reduce((sum, l) => sum + parseBudget(l.budget), 0);
