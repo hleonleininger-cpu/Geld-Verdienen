@@ -1194,14 +1194,35 @@ create table if not exists public.appointments (
     check (status in ('scheduled', 'confirmed', 'completed', 'cancelled', 'no_show')),
   notes text check (char_length(notes) <= 2000),
   public_token uuid not null default gen_random_uuid() unique,
-  -- Generierte Spalte statt Berechnung in jeder Query: der GiST-Index fuer
-  -- die Exclusion-Constraint braucht eine indexierbare Range-Spalte.
-  time_range tstzrange generated always as (
-    tstzrange(scheduled_at, scheduled_at + (duration_minutes || ' minutes')::interval, '[)')
-  ) stored,
+  -- Keine `generated ... stored`-Spalte: Postgres stuft `timestamptz +
+  -- interval` als STABLE (nicht IMMUTABLE) ein, das waere fuer eine
+  -- generierte Spalte unzulaessig ("generation expression is not
+  -- immutable"). Stattdessen per Trigger befuellt (siehe unten) – der
+  -- GiST-Index fuer die Exclusion-Constraint braucht trotzdem eine
+  -- indexierbare Range-Spalte.
+  time_range tstzrange,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create or replace function public.set_appointment_time_range()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.time_range := tstzrange(
+    new.scheduled_at,
+    new.scheduled_at + (new.duration_minutes || ' minutes')::interval,
+    '[)'
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists set_appointments_time_range on public.appointments;
+create trigger set_appointments_time_range
+  before insert or update on public.appointments
+  for each row execute procedure public.set_appointment_time_range();
 
 create index if not exists appointments_business_idx
   on public.appointments (business_id, scheduled_at);
